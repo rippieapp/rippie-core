@@ -1,0 +1,79 @@
+{
+	"name": "@rippieapp/core",
+	"version": "2026.8.19",
+	"description": "One music link becomes many. Detect a song from any platform and find it on all the others.",
+	"keywords": [
+		"music",
+		"isrc",
+		"spotify",
+		"deezer",
+		"tidal",
+		"apple-music",
+		"youtube-music",
+		"song-link"
+	],
+	"license": "MIT",
+	"author": "mewclouds",
+	"repository": {
+		"type": "git",
+		"url": "git+https://github.com/rippieapp/rippie-core.git"
+	},
+	"bugs": {
+		"url": "https://github.com/rippieapp/rippie-core/issues"
+	},
+	"homepage": "https://github.com/rippieapp/rippie-core#readme",
+	"type": "module",
+	"sideEffects": false,
+	"files": [
+		"dist",
+		"src"
+	],
+	"exports": {
+		".": {
+			"types": "./dist/index.d.ts",
+			"default": "./dist/index.js"
+		},
+		"./cache-sqlite": {
+			"types": "./dist/cache-sqlite.d.ts",
+			"default": "./dist/cache-sqlite.js"
+		},
+		"./package.json": "./package.json"
+	},
+	"engines": {
+		"node": ">=22"
+	},
+	"scripts": {
+		"build": "tsc -p tsconfig.build.json",
+		"typecheck": "tsc --noEmit",
+		"test": "bun test",
+		"lint": "bunx biome lint .",
+		"check": "bunx biome check .",
+		"check:fix": "bunx biome check --write .",
+		"format": "bunx biome format .",
+		"prepublishOnly": "bun run check && bun run typecheck && bun test && bun run build"
+	},
+	"dependencies": {
+		"fastest-levenshtein": "^1.0.16",
+		"ytmusic-api": "^5.3.1"
+	},
+	"peerDependencies": {
+		"drizzle-orm": "^0.45.2"
+	},
+	"peerDependenciesMeta": {
+		"drizzle-orm": {
+			"optional": true
+		}
+	},
+	"devDependencies": {
+		"@biomejs/biome": "2.5.4",
+		"@types/bun": "^1.3.14",
+		"@types/node": "^26.0.1",
+		"drizzle-kit": "^0.31.10",
+		"drizzle-orm": "^0.45.2",
+		"typescript": "^7.0.2"
+	},
+	"publishConfig": {
+		"access": "public",
+		"provenance": true
+	}
+}

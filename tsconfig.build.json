@@ -1,0 +1,18 @@
+{
+	"extends": "./tsconfig.json",
+	"compilerOptions": {
+		// Emitted JS and declarations are published, so they must resolve under Node's ESM rules.
+		// Relative imports in src/ therefore carry explicit .js extensions, which tsc preserves.
+		"module": "esnext",
+		"moduleResolution": "bundler",
+		"types": ["node"],
+		"noEmit": false,
+		"declaration": true,
+		"declarationMap": true,
+		"sourceMap": true,
+		"rootDir": "src",
+		"outDir": "dist"
+	},
+	"include": ["src/**/*.ts"],
+	"exclude": ["node_modules", "dist", "test", "examples"]
+}

@@ -1,0 +1,32 @@
+# Dependencies
+node_modules/
+
+# Build outputs
+dist/
+
+# Logs
+*.log
+
+# Environment & secrets
+.env
+.env.*
+!.env.example
+
+# Local scratch databases used by examples
+*.sqlite
+*.sqlite-wal
+*.sqlite-shm
+
+# TypeScript cache
+*.tsbuildinfo
+
+# Packed tarballs
+*.tgz
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# IDE files
+.vscode/
+.idea/
