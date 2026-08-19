@@ -1,0 +1,12 @@
+# Text files are LF in the repository and in every working tree, including Windows checkouts.
+# Without eol=lf, core.autocrlf hands Windows a CRLF tree and Biome's LF formatting fails.
+* text=auto eol=lf
+
+# Binary assets must never be line-ending converted.
+*.png binary
+*.jpg binary
+*.gif binary
+*.ico binary
+*.woff binary
+*.woff2 binary
+*.sqlite binary
