@@ -1,4 +1,31 @@
+export { pickBestDeezerTrack } from './deezerBridge.js';
 export { detectMusicPlatform, Platform } from './platform.js';
+export { type AppleMusicProvider, createAppleMusicProvider } from './providers/appleMusic.js';
+export {
+	createDeezerProvider,
+	type DeezerProvider,
+	type DeezerTrackLookup,
+	isDeezerTrackUrl,
+} from './providers/deezer.js';
+export {
+	createSpotifyProvider,
+	extractSpotifyTrackId,
+	type SpotifyProvider,
+	type SpotifyProviderOptions,
+	type SpotifyTrackLookup,
+} from './providers/spotify.js';
+export {
+	createTidalProvider,
+	extractTidalTrackId,
+	type TidalProvider,
+	type TidalProviderOptions,
+	type TidalTrackLookup,
+} from './providers/tidal.js';
+export {
+	createYtMusicProvider,
+	extractYtMusicId,
+	type YtMusicProvider,
+} from './providers/ytMusic.js';
 export { normalizeText, trackSignature } from './text.js';
 export type {
 	Awaitable,
