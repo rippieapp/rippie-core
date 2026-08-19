@@ -7,8 +7,18 @@ export {
 	type TrackCache,
 } from './cache/types.js';
 export { pickBestDeezerTrack } from './deezerBridge.js';
+export {
+	createRippie,
+	type ResolveOptions,
+	type ResolveResult,
+	type Rippie,
+	type RippieOptions,
+} from './pipeline.js';
 export { detectMusicPlatform, Platform } from './platform.js';
-export { type AppleMusicProvider, createAppleMusicProvider } from './providers/appleMusic.js';
+export {
+	type AppleMusicProvider,
+	createAppleMusicProvider,
+} from './providers/appleMusic.js';
 export {
 	createDeezerProvider,
 	type DeezerProvider,
@@ -34,6 +44,7 @@ export {
 	extractYtMusicId,
 	type YtMusicProvider,
 } from './providers/ytMusic.js';
+export { resolveLinksFromTrack } from './resolver.js';
 export { normalizeText, trackSignature } from './text.js';
 export type {
 	Awaitable,
