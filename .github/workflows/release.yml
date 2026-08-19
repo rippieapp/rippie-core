@@ -1,0 +1,110 @@
+name: Release
+
+# Tags are CalVer with a zero-padded month and day: 2026.08.19, or 2026.08.19-rc1 for a
+# prerelease. The glob below matches both.
+#
+# npm versions cannot carry the padding — SemVer forbids leading zeroes in numeric identifiers, so
+# `2026.08.19` is rejected while `2026.8.19` is accepted. package.json therefore holds the unpadded
+# form and this workflow normalizes the tag before comparing them.
+on:
+  push:
+    tags:
+      - '[0-9][0-9][0-9][0-9].[0-9][0-9].[0-9][0-9]*'
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Existing tag to build and release (e.g. 2026.08.17-rc1)'
+        required: true
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: read
+      # Required for npm provenance; without it `--provenance` fails.
+      id-token: write
+
+    steps:
+      - name: Resolve the tag
+        id: tag
+        run: echo "name=${{ inputs.tag || github.ref_name }}" >> "$GITHUB_OUTPUT"
+
+      - name: Checkout the tag
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ steps.tag.outputs.name }}
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Setup Node
+        uses: actions/setup-node@v7
+        with:
+          # Active LTS. registry-url writes a project .npmrc that reads NODE_AUTH_TOKEN,
+          # which the publish step below supplies.
+          node-version: 24.x
+          registry-url: https://registry.npmjs.org
+
+      - name: Derive the npm version from the tag
+        id: version
+        run: |
+          set -euo pipefail
+          TAG='${{ steps.tag.outputs.name }}'
+
+          # Split an optional -rc1 style prerelease off the calendar part.
+          BASE="${TAG%%-*}"
+          PRERELEASE=""
+          if [ "$TAG" != "$BASE" ]; then
+            PRERELEASE="${TAG#*-}"
+          fi
+
+          IFS='.' read -r YEAR MONTH DAY <<< "$BASE"
+          if [ -z "$YEAR" ] || [ -z "$MONTH" ] || [ -z "$DAY" ]; then
+            echo "Tag '$TAG' is not YYYY.MM.DD[-prerelease]" >&2
+            exit 1
+          fi
+
+          # 10# forces base-10 so a padded 08 does not parse as invalid octal.
+          EXPECTED="$YEAR.$((10#$MONTH)).$((10#$DAY))"
+          if [ -n "$PRERELEASE" ]; then
+            EXPECTED="$EXPECTED-$PRERELEASE"
+          fi
+
+          # A prerelease must not become the default install for `npm i @rippieapp/core`.
+          DIST_TAG=latest
+          if [ -n "$PRERELEASE" ]; then
+            DIST_TAG=next
+          fi
+
+          echo "expected=$EXPECTED" >> "$GITHUB_OUTPUT"
+          echo "dist_tag=$DIST_TAG" >> "$GITHUB_OUTPUT"
+          echo "Tag $TAG -> npm version $EXPECTED (dist-tag: $DIST_TAG)"
+
+      - name: Verify package.json matches the tag
+        run: |
+          set -euo pipefail
+          ACTUAL="$(node -p "require('./package.json').version")"
+          EXPECTED='${{ steps.version.outputs.expected }}'
+          if [ "$ACTUAL" != "$EXPECTED" ]; then
+            echo "package.json version is $ACTUAL but tag implies $EXPECTED" >&2
+            echo "Remember npm drops the zero padding: tag 2026.08.19 -> version 2026.8.19" >&2
+            exit 1
+          fi
+
+      - name: Install dependencies
+        run: bun install
+
+      - name: Check, test, and build
+        run: |
+          bun run check
+          bun run typecheck
+          bun run test
+          bun run build
+
+      - name: Publish to npm
+        run: npm publish --access public --provenance --tag '${{ steps.version.outputs.dist_tag }}'
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
