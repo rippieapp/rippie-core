@@ -1,3 +1,11 @@
+export { createMemoryTrackCache } from './cache/memory.js';
+export {
+	type CachedPlatformLinks,
+	type CacheTtlOptions,
+	DEFAULT_NEGATIVE_TTL_MS,
+	DEFAULT_TTL_MS,
+	type TrackCache,
+} from './cache/types.js';
 export { pickBestDeezerTrack } from './deezerBridge.js';
 export { detectMusicPlatform, Platform } from './platform.js';
 export { type AppleMusicProvider, createAppleMusicProvider } from './providers/appleMusic.js';
