@@ -4,6 +4,7 @@ export {
 	type CacheTtlOptions,
 	DEFAULT_NEGATIVE_TTL_MS,
 	DEFAULT_TTL_MS,
+	type ResolvedTrack,
 	type TrackCache,
 } from './cache/types.js';
 export { pickBestDeezerTrack } from './deezerBridge.js';

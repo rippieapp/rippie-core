@@ -8,7 +8,7 @@ import {
 } from './types.js';
 
 type TrackEntry = { track: TrackInfo; expiresAt: number };
-type LinksEntry = { links: CachedPlatformLinks; expiresAt: number };
+type LinksEntry = { track: TrackInfo; links: CachedPlatformLinks; expiresAt: number };
 
 /**
  * Process-local cache with no dependencies, used when no adapter is supplied.
@@ -41,10 +41,10 @@ export const createMemoryTrackCache = (options: CacheTtlOptions = {}): TrackCach
 		getLinks: (isrc) => {
 			const entry = links.get(isrc);
 			if (!entry || now() >= entry.expiresAt) return null;
-			return new Map(entry.links);
+			return { track: entry.track, links: new Map(entry.links) };
 		},
 
-		setLinks: (isrc, incoming, ttlMs) => {
+		setLinks: (isrc, track, incoming, ttlMs) => {
 			const timestamp = now();
 			const existing = links.get(isrc);
 			const isExpired = !existing || timestamp >= existing.expiresAt;
@@ -69,7 +69,18 @@ export const createMemoryTrackCache = (options: CacheTtlOptions = {}): TrackCach
 						? existing.expiresAt
 						: timestamp + (hasNull ? negativeTtlMs : defaultTtlMs);
 
-			links.set(isrc, { links: merged, expiresAt });
+			links.set(isrc, { track, links: merged, expiresAt });
+		},
+
+		findIsrcByLink: (platform, link) => {
+			const timestamp = now();
+			// A process-local map is expected to stay small enough that a scan is cheap next to
+			// the network call it replaces; the SQLite adapter carries the indexed version.
+			for (const [isrc, entry] of links) {
+				if (timestamp >= entry.expiresAt) continue;
+				if (entry.links.get(platform) === link) return isrc;
+			}
+			return null;
 		},
 
 		prune: () => {

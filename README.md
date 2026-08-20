@@ -85,9 +85,13 @@ await rippie.resolve(url, { platforms: [Platform.Spotify, Platform.Deezer] });
 Resolution is expensive — several API calls and, for two platforms, fuzzy text matching. So the
 same song is never chased twice. There are two layers:
 
-1. **Source link → track.** A repeated link never re-reads its origin API.
-2. **ISRC → cross-platform links.** The same recording arriving from a different platform reuses
-   the work already done.
+1. **Track identity → track.** A repeated link never re-reads its origin API. Providers that
+   expose a stable id (all five built-ins do) key this by that id rather than the exact URL, so a
+   link with different query-string or storefront noise still hits.
+2. **ISRC → the track plus its cross-platform links.** The same recording arriving from a
+   different platform reuses the work already done — and if that arriving link was itself already
+   discovered as one of an earlier resolution's results, `findIsrcByLink` finds it before any
+   provider is called at all, not just before the expensive ones.
 
 Both layers use a two-speed TTL: a complete result is kept for 30 days, while a partial or failed
 one gets 5 minutes and is retried soon after. A partial retry never extends that short window, so a
@@ -120,14 +124,16 @@ optional peer dependency; you only need it if you use this adapter.
 Already running drizzle? Fold `cacheSchema` into your own schema and let `drizzle-kit` generate the
 migrations instead of using `CACHE_TABLES_SQL`.
 
-Any other store — Redis, Postgres, a KV namespace — is a matter of implementing five methods:
+Any other store — Redis, Postgres, a KV namespace — is a matter of implementing six methods:
 
 ```ts
 import type { TrackCache } from '@rippieapp/core';
 ```
 
-Every method may return a value or a promise, so remote stores are fine. Adjust the TTLs with
-`defaultTtlMs` and `negativeTtlMs`.
+`getLinks`/`setLinks` carry the track's own name and artists alongside its links, and
+`findIsrcByLink` is the reverse index that makes a link already known as a resolution target
+answer without a network call. Every method may return a value or a promise, so remote stores are
+fine. Adjust the TTLs with `defaultTtlMs` and `negativeTtlMs`.
 
 ## Teaching her a new platform
 

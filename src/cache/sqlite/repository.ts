@@ -7,6 +7,7 @@ import {
 	type CacheTtlOptions,
 	DEFAULT_NEGATIVE_TTL_MS,
 	DEFAULT_TTL_MS,
+	type ResolvedTrack,
 	type TrackCache,
 } from '../types.js';
 import { resolvedLinkCache, resolvedLinkCacheLinks, trackCache } from './schema.js';
@@ -47,7 +48,7 @@ export const createSqliteTrackCache = (options: SqliteTrackCacheOptions): TrackC
 	const negativeTtlMs = options.negativeTtlMs ?? DEFAULT_NEGATIVE_TTL_MS;
 	const now = options.now ?? ((): number => Date.now());
 
-	const getLinks = (isrc: string): CachedPlatformLinks | null => {
+	const getLinks = (isrc: string): ResolvedTrack | null => {
 		const cacheEntry = db
 			.select()
 			.from(resolvedLinkCache)
@@ -60,7 +61,18 @@ export const createSqliteTrackCache = (options: SqliteTrackCacheOptions): TrackC
 			.from(resolvedLinkCacheLinks)
 			.where(eq(resolvedLinkCacheLinks.isrc, isrc))
 			.all();
-		return new Map(links.map(({ platform, link }) => [platform as Platform, link]));
+
+		return {
+			// The caller knows which platform's link it just read this from and overrides `link`
+			// accordingly; at the ISRC level there is no single canonical link to report here.
+			track: {
+				name: cacheEntry.trackName,
+				artists: parseArtists(cacheEntry.artistsJson),
+				isrc,
+				link: null,
+			},
+			links: new Map(links.map(({ platform, link }) => [platform as Platform, link])),
+		};
 	};
 
 	return {
@@ -99,7 +111,12 @@ export const createSqliteTrackCache = (options: SqliteTrackCacheOptions): TrackC
 
 		getLinks,
 
-		setLinks: (isrc: string, incoming: CachedPlatformLinks, ttlMs?: number) => {
+		setLinks: (
+			isrc: string,
+			track: TrackInfo,
+			incoming: CachedPlatformLinks,
+			ttlMs?: number,
+		) => {
 			const timestamp = now();
 			db.transaction((transaction) => {
 				const existing = transaction
@@ -126,7 +143,7 @@ export const createSqliteTrackCache = (options: SqliteTrackCacheOptions): TrackC
 
 				const existingLinks: CachedPlatformLinks = isExpired
 					? new Map()
-					: (getLinks(isrc) ?? new Map());
+					: (getLinks(isrc)?.links ?? new Map());
 				// Whether the entry was ALREADY partial before this merge, as opposed to merely
 				// having a null in the merge result. A complete entry widened with one new miss
 				// (e.g. a newly-enabled provider) must get a fresh negative TTL, not inherit the
@@ -151,10 +168,17 @@ export const createSqliteTrackCache = (options: SqliteTrackCacheOptions): TrackC
 							? existing.expiresAt
 							: timestamp + (hasNull ? negativeTtlMs : defaultTtlMs);
 
+				const trackValues = {
+					trackName: track.name,
+					artistsJson: JSON.stringify(track.artists),
+				};
 				transaction
 					.insert(resolvedLinkCache)
-					.values({ isrc, expiresAt })
-					.onConflictDoUpdate({ target: resolvedLinkCache.isrc, set: { expiresAt } })
+					.values({ isrc, ...trackValues, expiresAt })
+					.onConflictDoUpdate({
+						target: resolvedLinkCache.isrc,
+						set: { ...trackValues, expiresAt },
+					})
 					.run();
 				for (const [platform, link] of merged) {
 					transaction
@@ -167,6 +191,25 @@ export const createSqliteTrackCache = (options: SqliteTrackCacheOptions): TrackC
 						.run();
 				}
 			});
+		},
+
+		findIsrcByLink: (platform: Platform, link: string) => {
+			const row = db
+				.select({ isrc: resolvedLinkCacheLinks.isrc })
+				.from(resolvedLinkCacheLinks)
+				.innerJoin(
+					resolvedLinkCache,
+					eq(resolvedLinkCache.isrc, resolvedLinkCacheLinks.isrc),
+				)
+				.where(
+					and(
+						eq(resolvedLinkCacheLinks.platform, platform),
+						eq(resolvedLinkCacheLinks.link, link),
+						gt(resolvedLinkCache.expiresAt, now()),
+					),
+				)
+				.get();
+			return row?.isrc ?? null;
 		},
 
 		prune: () => {

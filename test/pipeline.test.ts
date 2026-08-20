@@ -256,7 +256,9 @@ describe('resolve', () => {
 		const { rippie, cache } = buildRippie();
 		await rippie.resolve(SPOTIFY_URL);
 
-		expect((await cache.getLinks('ISRC1'))?.get(Platform.Spotify)).toBe(SOURCE_TRACK.link);
+		expect((await cache.getLinks('ISRC1'))?.links.get(Platform.Spotify)).toBe(
+			SOURCE_TRACK.link,
+		);
 	});
 
 	test('a throwing provider does not fail the whole resolution', async () => {
@@ -269,6 +271,32 @@ describe('resolve', () => {
 		expect(result.links.get(Platform.Deezer)).toBe('https://www.deezer.com/en/track/1');
 		expect(result.links.has(Platform.Tidal)).toBe(false);
 	});
+
+	test('resolving a link already discovered on another platform calls no provider', async () => {
+		// This is the reported bug end to end: a Spotify link resolves and discovers an Apple
+		// Music link as one of its results. Posting that exact Apple link later must answer
+		// from the cache — zero calls to the Apple provider, not even one.
+		const APPLE_URL = 'https://music.apple.com/us/album/x/1?i=2';
+		const { rippie, spotify, apple } = buildRippie();
+
+		const first = await rippie.resolve(SPOTIFY_URL);
+		if (first.status !== 'ok') throw new Error('expected ok');
+		expect(first.links.get(Platform.AppleMusic)).toBe(APPLE_URL);
+		expect(apple.calls.findByTrack).toBe(1);
+		expect(apple.calls.fetchTrack).toBe(0);
+
+		const second = await rippie.resolve(APPLE_URL);
+
+		expect(apple.calls.fetchTrack).toBe(0);
+		expect(apple.calls.findByTrack).toBe(1); // unchanged — no new call at all
+		expect(spotify.calls.fetchTrack).toBe(1); // unchanged — Spotify was already known too
+
+		if (second.status !== 'ok') throw new Error('expected ok');
+		expect(second.source).toBe(Platform.AppleMusic);
+		expect(second.track.link).toBe(APPLE_URL);
+		expect(second.track.isrc).toBe(SOURCE_TRACK.isrc);
+		expect(second.links.get(Platform.Spotify)).toBe(SPOTIFY_URL);
+	});
 });
 
 describe('startPruning', () => {
@@ -280,6 +308,7 @@ describe('startPruning', () => {
 				setTrack: () => {},
 				getLinks: () => null,
 				setLinks: () => {},
+				findIsrcByLink: () => null,
 				prune: () => {
 					pruned += 1;
 				},
@@ -313,6 +342,7 @@ describe('startPruning', () => {
 					setTrack: () => {},
 					getLinks: () => null,
 					setLinks: () => {},
+					findIsrcByLink: () => null,
 					prune: () => Promise.reject(new Error('adapter unreachable')),
 				},
 			});
@@ -341,6 +371,7 @@ describe('startPruning', () => {
 					setTrack: () => {},
 					getLinks: () => null,
 					setLinks: () => {},
+					findIsrcByLink: () => null,
 					prune: () => {
 						throw new Error('adapter misconfigured');
 					},

@@ -85,15 +85,39 @@ bridge. Topic channels are named `Artist Name - Topic`, so that suffix is stripp
 
 ## The two-layer cache
 
-Layer 1 keys a **source URL** to the `TrackInfo` it describes. A link posted twice never re-reads
-its origin API.
+Layer 1 keys a **track's identity** to the `TrackInfo` it describes. When the provider that read
+the link supports `extractId`, the key is `platform:id` — Spotify's, Tidal's, or Apple's numeric
+id, Deezer's track id, YouTube's video id — so a link with a different query string or storefront
+still hits the same entry. A provider without `extractId` falls back to the exact URL, which is how
+every provider behaved before this existed.
 
-Layer 2 keys an **ISRC** to the cross-platform links found for it. The same recording arriving from
-a different platform reuses the work — and because the source platform's own link is folded into
-the payload, the reverse direction hits too.
-
-Only platforms absent from layer 2 are queried. Widening a request later (say, a server enables a
+Layer 2 keys an **ISRC** to the track's own name and artists plus the cross-platform links found
+for it. The same recording arriving from a different platform reuses the work — the source
+platform's own link is folded into the payload, so the reverse direction hits too — and only
+platforms absent from the cached set are queried. Widening a request later (say, a server enables a
 new service) re-queries only the newly requested platform.
+
+### Reverse lookup: answering before any provider runs
+
+Layer 2 alone has a gap: it only helps once you already have an ISRC, and getting one has always
+meant reading the *source* link first. But by the time a track has been resolved once, its links on
+every other platform are already sitting in layer 2 — including, often, the exact URL someone posts
+next. If Spotify resolves and discovers a matching Apple Music link as one of its results, and
+someone later posts that same Apple Music link, the ISRC for it was already known before that
+message existed.
+
+`findIsrcByLink(platform, link)` is the index that makes this useful: given a platform and an exact
+link, it returns the ISRC already on file for it, if any. `resolve()` checks this before calling
+`fetchTrack` at all. A hit reconstructs the result from the cached track and links with **zero**
+provider calls — not even the cheap ones. The cached track's own `link` field is overwritten with
+the URL just posted before it's returned, since that field was set by whichever platform originally
+discovered the ISRC and may point elsewhere entirely.
+
+This is an exact-string index, not a canonicalized one — a link that differs from the one a
+provider originally returned (different query params, for instance) will not match. That's a
+narrower guarantee than layer 1's canonical-id matching, and deliberately so: layer 1 knows how to
+parse a provider's own link shape, but a link's *search-result* form isn't something the cache can
+canonicalize on its own.
 
 ### The negative-TTL contract
 
@@ -102,10 +126,15 @@ This is the subtle part, and the behavior most worth preserving in any new adapt
 A complete result — every requested platform resolved to a real link — is stable and kept for 30
 days. A result containing a `null` is usually a transient upstream failure, so it gets 5 minutes.
 
-The rule that makes this work: **a partial retry never extends the short window.** Without it, a
-platform that reliably has no match for a track would restart the 5-minute timer on every retry,
-and the entry would be rewritten forever without ever aging out or settling. So when merging into
-an unexpired incomplete entry, the original `expiresAt` is preserved rather than recomputed.
+The rule that makes this work: **a partial retry never extends the short window** — but only when
+the entry was *already* partial going in. Merging into an unexpired entry preserves its existing
+`expiresAt` when, and only when, both (a) it already held a null before this merge and (b) it still
+holds one after. Checking only the post-merge result was a real bug: a fully-resolved entry widened
+with a single new miss — a newly-enabled provider's transient failure, say — would inherit the
+30-day clock it earned while complete, pinning that miss for a month instead of retrying in five
+minutes. Checking only the pre-merge state has the opposite failure: a partial entry that a retry
+successfully completes needs the fresh 30-day TTL, not the short one it's about to outgrow. Both
+conditions are required.
 
 Once every platform resolves, the entry is upgraded to the full 30-day TTL on the spot.
 

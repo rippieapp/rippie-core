@@ -19,6 +19,14 @@ const COMPLETE_TRACK: TrackInfo = {
 	link: 'https://example.test/link',
 };
 
+/** A minimal track for `setLinks` calls where only the isrc key itself matters to the test. */
+const trackFor = (isrc: string): TrackInfo => ({
+	name: 'Track',
+	artists: ['Artist'],
+	isrc,
+	link: 'https://example.test/source',
+});
+
 const openSqliteDatabase = () => {
 	const database = new Database(':memory:', { create: true, strict: true });
 	database.run('PRAGMA foreign_keys = ON');
@@ -65,6 +73,9 @@ for (const adapter of adapters) {
 			const { cache } = build();
 			expect(await cache.getTrack('https://example.test/missing')).toBeNull();
 			expect(await cache.getLinks('NOPE')).toBeNull();
+			expect(
+				await cache.findIsrcByLink(Platform.Spotify, 'https://example.test/x'),
+			).toBeNull();
 		});
 
 		test('round-trips a track including its artist array', async () => {
@@ -105,17 +116,34 @@ for (const adapter of adapters) {
 			expect(await cache.getTrack('https://example.test/track')).toBeNull();
 		});
 
+		test('round-trips the track alongside its links', async () => {
+			const { cache } = build();
+			const track = trackFor('ISRC-META');
+			await cache.setLinks('ISRC-META', track, new Map([[Platform.Spotify, 'https://x/1']]));
+
+			const result = await cache.getLinks('ISRC-META');
+			expect(result?.track.name).toBe(track.name);
+			expect(result?.track.artists).toEqual(track.artists);
+			expect(result?.links).toEqual(new Map([[Platform.Spotify, 'https://x/1']]));
+		});
+
 		test('merges links without extending an incomplete entry expiry', async () => {
 			const { cache, setTime } = build();
-			await cache.setLinks('ISRC2', new Map([[Platform.Spotify, null]]), 60_000);
+			await cache.setLinks(
+				'ISRC2',
+				trackFor('ISRC2'),
+				new Map([[Platform.Spotify, null]]),
+				60_000,
+			);
 
 			setTime(10);
 			await cache.setLinks(
 				'ISRC2',
+				trackFor('ISRC2'),
 				new Map([[Platform.Deezer, 'https://example.test/deezer']]),
 			);
 
-			expect(await cache.getLinks('ISRC2')).toEqual(
+			expect((await cache.getLinks('ISRC2'))?.links).toEqual(
 				new Map([
 					[Platform.Spotify, null],
 					[Platform.Deezer, 'https://example.test/deezer'],
@@ -131,10 +159,16 @@ for (const adapter of adapters) {
 
 		test('upgrades a completed entry to the normal TTL', async () => {
 			const { cache, setTime } = build();
-			await cache.setLinks('ISRC4', new Map([[Platform.Spotify, null]]), 100);
+			await cache.setLinks(
+				'ISRC4',
+				trackFor('ISRC4'),
+				new Map([[Platform.Spotify, null]]),
+				100,
+			);
 			setTime(10);
 			await cache.setLinks(
 				'ISRC4',
+				trackFor('ISRC4'),
 				new Map([[Platform.Spotify, 'https://example.test/spotify']]),
 			);
 
@@ -151,6 +185,7 @@ for (const adapter of adapters) {
 			const { cache, setTime } = build();
 			await cache.setLinks(
 				'ISRC7',
+				trackFor('ISRC7'),
 				new Map([
 					[Platform.Spotify, 'https://example.test/spotify'],
 					[Platform.Deezer, 'https://example.test/deezer'],
@@ -158,7 +193,7 @@ for (const adapter of adapters) {
 			);
 
 			setTime(10);
-			await cache.setLinks('ISRC7', new Map([[Platform.Tidal, null]]));
+			await cache.setLinks('ISRC7', trackFor('ISRC7'), new Map([[Platform.Tidal, null]]));
 
 			setTime(10 + NEGATIVE_TTL - 1);
 			expect(await cache.getLinks('ISRC7')).not.toBeNull();
@@ -168,12 +203,19 @@ for (const adapter of adapters) {
 
 		test('starts a fresh negative window at the exact expiry instant', async () => {
 			const { cache, setTime } = build();
-			await cache.setLinks('ISRC5', new Map([[Platform.Spotify, null]]), 100);
+			await cache.setLinks(
+				'ISRC5',
+				trackFor('ISRC5'),
+				new Map([[Platform.Spotify, null]]),
+				100,
+			);
 			setTime(100);
-			await cache.setLinks('ISRC5', new Map([[Platform.Deezer, null]]));
+			await cache.setLinks('ISRC5', trackFor('ISRC5'), new Map([[Platform.Deezer, null]]));
 
 			// The expired entry is discarded, so Spotify does not carry over.
-			expect(await cache.getLinks('ISRC5')).toEqual(new Map([[Platform.Deezer, null]]));
+			expect((await cache.getLinks('ISRC5'))?.links).toEqual(
+				new Map([[Platform.Deezer, null]]),
+			);
 			setTime(100 + NEGATIVE_TTL - 1);
 			expect(await cache.getLinks('ISRC5')).not.toBeNull();
 			setTime(100 + NEGATIVE_TTL);
@@ -184,6 +226,7 @@ for (const adapter of adapters) {
 			const { cache } = build();
 			await cache.setLinks(
 				'ISRC3',
+				trackFor('ISRC3'),
 				new Map([[Platform.Spotify, 'https://example.test/spotify']]),
 				-1,
 			);
@@ -206,11 +249,61 @@ for (const adapter of adapters) {
 			expect(await cache.getTrack('https://example.test/custom')).toBeNull();
 
 			timestamp = 0;
-			await cache.setLinks('CUSTOM', new Map([[Platform.Spotify, null]]));
+			await cache.setLinks('CUSTOM', trackFor('CUSTOM'), new Map([[Platform.Spotify, null]]));
 			timestamp = 99;
 			expect(await cache.getLinks('CUSTOM')).not.toBeNull();
 			timestamp = 100;
 			expect(await cache.getLinks('CUSTOM')).toBeNull();
+		});
+
+		test('findIsrcByLink finds the isrc for a known platform link', async () => {
+			const { cache } = build();
+			await cache.setLinks(
+				'ISRC-REVERSE',
+				trackFor('ISRC-REVERSE'),
+				new Map([[Platform.AppleMusic, 'https://music.apple.com/us/album/x/1?i=2']]),
+			);
+
+			expect(
+				await cache.findIsrcByLink(
+					Platform.AppleMusic,
+					'https://music.apple.com/us/album/x/1?i=2',
+				),
+			).toBe('ISRC-REVERSE');
+			expect(
+				await cache.findIsrcByLink(Platform.Spotify, 'https://open.spotify.com/track/x'),
+			).toBeNull();
+		});
+
+		test('findIsrcByLink does not return an expired entry', async () => {
+			const { cache, setTime } = build();
+			await cache.setLinks(
+				'ISRC-REVERSE-EXPIRED',
+				trackFor('ISRC-REVERSE-EXPIRED'),
+				new Map([[Platform.AppleMusic, 'https://music.apple.com/us/album/x/1?i=3']]),
+				-1,
+			);
+			setTime(1);
+
+			expect(
+				await cache.findIsrcByLink(
+					Platform.AppleMusic,
+					'https://music.apple.com/us/album/x/1?i=3',
+				),
+			).toBeNull();
+		});
+
+		test('findIsrcByLink does not match a link on the wrong platform', async () => {
+			const { cache } = build();
+			await cache.setLinks(
+				'ISRC-REVERSE-PLATFORM',
+				trackFor('ISRC-REVERSE-PLATFORM'),
+				new Map([[Platform.AppleMusic, 'https://shared.example/1']]),
+			);
+
+			expect(
+				await cache.findIsrcByLink(Platform.Deezer, 'https://shared.example/1'),
+			).toBeNull();
 		});
 	});
 }
@@ -218,12 +311,16 @@ for (const adapter of adapters) {
 describe('memory cache isolation', () => {
 	test('returns a copy so callers cannot mutate cached state', async () => {
 		const cache = createMemoryTrackCache();
-		await cache.setLinks('ISRC6', new Map([[Platform.Spotify, 'https://example.test/a']]));
+		await cache.setLinks(
+			'ISRC6',
+			trackFor('ISRC6'),
+			new Map([[Platform.Spotify, 'https://example.test/a']]),
+		);
 
 		const first = await cache.getLinks('ISRC6');
-		first?.set(Platform.Deezer, 'https://example.test/injected');
+		first?.links.set(Platform.Deezer, 'https://example.test/injected');
 
-		expect(await cache.getLinks('ISRC6')).toEqual(
+		expect((await cache.getLinks('ISRC6'))?.links).toEqual(
 			new Map([[Platform.Spotify, 'https://example.test/a']]),
 		);
 	});
@@ -254,13 +351,18 @@ describe('sqlite cache without foreign key enforcement', () => {
 
 		cache.setLinks(
 			'ISRC-ORPHAN',
+			trackFor('ISRC-ORPHAN'),
 			new Map([
 				[Platform.Spotify, 'https://example.test/spotify'],
 				[Platform.Deezer, 'https://example.test/deezer'],
 			]),
 			-1, // already expired
 		);
-		cache.setLinks('ISRC-ORPHAN', new Map([[Platform.Spotify, 'https://example.test/new']]));
+		cache.setLinks(
+			'ISRC-ORPHAN',
+			trackFor('ISRC-ORPHAN'),
+			new Map([[Platform.Spotify, 'https://example.test/new']]),
+		);
 
 		// Without an explicit child delete, the two rows from the expired entry survive
 		// alongside the new one, so a later getLinks would return three entries for one ISRC.
@@ -274,6 +376,7 @@ describe('sqlite cache without foreign key enforcement', () => {
 
 		cache.setLinks(
 			'ISRC-PRUNE',
+			trackFor('ISRC-PRUNE'),
 			new Map([
 				[Platform.Spotify, 'https://example.test/spotify'],
 				[Platform.Deezer, 'https://example.test/deezer'],

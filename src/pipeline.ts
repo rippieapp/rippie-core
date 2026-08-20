@@ -92,25 +92,39 @@ export const createRippie = (options: RippieOptions = {}) => {
 
 	/** Reads a source link into normalized track data, using layer 1 of the cache. */
 	const fetchTrack = async (url: string, platform?: Platform): Promise<TrackInfo | null> => {
-		const cached = await cache.getTrack(url);
-		if (cached) return cached;
+		const byRawUrl = await cache.getTrack(url);
+		if (byRawUrl) return byRawUrl;
 
 		const provider = platform
 			? byPlatform.get(platform)
 			: providers.find((candidate) => candidate.matches(url));
 		if (!provider) return null;
 
+		// A canonical id collapses query-string and storefront variants of the same link onto
+		// one cache entry. Providers without extractId fall back to the exact URL, unchanged
+		// from before.
+		const canonicalId = provider.extractId ? await provider.extractId(url) : null;
+		const cacheKey = canonicalId ? `${provider.platform}:${canonicalId}` : url;
+
+		if (cacheKey !== url) {
+			const byCanonicalId = await cache.getTrack(cacheKey);
+			if (byCanonicalId) return byCanonicalId;
+		}
+
 		const track = await provider.fetchTrack(url);
-		if (track) await cache.setTrack(url, track);
+		if (track) await cache.setTrack(cacheKey, track);
 		return track;
 	};
 
 	/**
 	 * Resolves a source link into the same track on other platforms.
 	 *
-	 * Layer 1 avoids re-reading the source link; layer 2 avoids re-searching platforms already
-	 * known for this ISRC. Only platforms missing from the cache are queried, and the source
-	 * platform's own link is folded back in so a later request from a different platform hits.
+	 * `findIsrcByLink` is checked before layer 1: if this exact link was already discovered as
+	 * one of another resolve's results, its ISRC and track metadata are already known and no
+	 * provider is called at all. Otherwise layer 1 avoids re-reading the source link, and layer
+	 * 2 avoids re-searching platforms already known for this ISRC — only platforms missing from
+	 * the cache are queried, and the source platform's own link is folded back in so a later
+	 * request from a different platform hits.
 	 */
 	const resolve = async (
 		url: string,
@@ -119,7 +133,24 @@ export const createRippie = (options: RippieOptions = {}) => {
 		const source = detect(url);
 		if (!source) return { status: 'unresolved', source: null };
 
-		const track = await fetchTrack(url, source);
+		let track: TrackInfo | null = null;
+		let knownLinks: CachedPlatformLinks | null = null;
+
+		const reverseIsrc = await cache.findIsrcByLink(source, url);
+		if (reverseIsrc) {
+			const known = await cache.getLinks(reverseIsrc);
+			if (known) {
+				// `known.track` was discovered from whichever platform first found this ISRC,
+				// so its `link` field may point elsewhere — it must reflect the URL just
+				// posted, not the one that originally found it.
+				track = { ...known.track, link: url };
+				knownLinks = known.links;
+			}
+		}
+
+		if (!track) {
+			track = await fetchTrack(url, source);
+		}
 		if (!track) return { status: 'unresolved', source };
 		if (!track.isrc) return { status: 'no-isrc', source, track };
 
@@ -132,7 +163,7 @@ export const createRippie = (options: RippieOptions = {}) => {
 		const sourceLinks: CachedPlatformLinks = new Map();
 		if (track.link) sourceLinks.set(source, track.link);
 
-		const cached = await cache.getLinks(isrc);
+		const cached = knownLinks ?? (await cache.getLinks(isrc))?.links ?? null;
 		const links: ResolvedLinks = new Map();
 		const missing: Platform[] = [];
 
@@ -156,9 +187,11 @@ export const createRippie = (options: RippieOptions = {}) => {
 				payload.set(platform, link);
 				if (link) links.set(platform, link);
 			}
-			await cache.setLinks(isrc, payload);
-		} else if (sourceLinks.size > 0) {
-			await cache.setLinks(isrc, sourceLinks);
+			await cache.setLinks(isrc, track, payload);
+		} else if (sourceLinks.size > 0 && !knownLinks) {
+			// A reverse-lookup hit already had this exact source link cached, so writing it
+			// back would be a no-op merge; only write when this resolve learned something new.
+			await cache.setLinks(isrc, track, sourceLinks);
 		}
 
 		return { status: 'ok', source, track, links };

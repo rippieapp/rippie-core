@@ -23,27 +23,37 @@ export type CacheTtlOptions = {
 export const DEFAULT_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 export const DEFAULT_NEGATIVE_TTL_MS = 5 * 60 * 1000;
 
+/** A track's identity, plus every cross-platform link known for it. */
+export type ResolvedTrack = {
+	track: TrackInfo;
+	links: CachedPlatformLinks;
+};
+
 /**
  * The two-layer cache the resolution pipeline depends on.
  *
- * Layer 1 keys source URLs to the track they describe, so a repeated link skips its origin API.
- * Layer 2 keys ISRCs to cross-platform links, so the same song posted from a different platform
- * reuses the work.
+ * Layer 1 keys a track's identity (its canonical id when the provider supports one, its exact
+ * URL otherwise) to the track it describes, so a repeated link skips its origin API.
+ *
+ * Layer 2 keys an ISRC to the track's own metadata plus its cross-platform links, so the same
+ * song posted from a different platform reuses the work — and `findIsrcByLink` lets that reuse
+ * happen even on the very first time a given link is seen, if some other platform already
+ * discovered this exact link as one of its results.
  *
  * Every method may be synchronous or asynchronous, so remote stores are implementable.
  */
 export type TrackCache = {
-	getTrack: (url: string) => Awaitable<TrackInfo | null>;
-	setTrack: (url: string, track: TrackInfo, ttlMs?: number) => Awaitable<void>;
-	getLinks: (isrc: string) => Awaitable<CachedPlatformLinks | null>;
-	setLinks: (isrc: string, links: CachedPlatformLinks, ttlMs?: number) => Awaitable<void>;
+	getTrack: (key: string) => Awaitable<TrackInfo | null>;
+	setTrack: (key: string, track: TrackInfo, ttlMs?: number) => Awaitable<void>;
+	getLinks: (isrc: string) => Awaitable<ResolvedTrack | null>;
+	setLinks: (
+		isrc: string,
+		track: TrackInfo,
+		links: CachedPlatformLinks,
+		ttlMs?: number,
+	) => Awaitable<void>;
+	/** Finds the ISRC already known for a specific platform's link, if any is cached and unexpired. */
+	findIsrcByLink: (platform: Platform, link: string) => Awaitable<string | null>;
 	/** Removes expired entries. Called periodically by `startPruning`. */
 	prune: () => Awaitable<void>;
 };
-
-/** Resolves the TTL for a set of links, applying the negative window when any link is missing. */
-export const ttlForLinks = (
-	links: Iterable<string | null>,
-	defaultTtlMs: number,
-	negativeTtlMs: number,
-): number => ([...links].some((link) => link == null) ? negativeTtlMs : defaultTtlMs);
