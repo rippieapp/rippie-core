@@ -239,6 +239,7 @@ export const createTidalProvider = (options: TidalProviderOptions) => {
 	const provider: Provider = {
 		platform: Platform.Tidal,
 		matches: (url) => extractTidalTrackId(url) !== null,
+		extractId: extractTidalTrackId,
 		fetchTrack: async (url) => {
 			const trackId = extractTidalTrackId(url);
 			if (!trackId) return null;

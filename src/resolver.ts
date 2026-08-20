@@ -12,23 +12,18 @@ export const resolveLinksFromTrack = async (
 	providers: Provider[],
 	track: TrackInfo,
 ): Promise<ResolvedLinks> => {
-	const lookups = providers
-		.map((provider) => {
-			if (track.isrc && provider.findByIsrc) {
-				const { isrc } = track;
-				const findByIsrc = provider.findByIsrc;
-				return { provider, run: () => findByIsrc(isrc) };
-			}
-			if (provider.findByTrack) {
-				const findByTrack = provider.findByTrack;
-				return { provider, run: () => findByTrack(track) };
-			}
-			return null;
-		})
-		.filter(
-			(lookup): lookup is { provider: Provider; run: () => Promise<string | null> } =>
-				lookup !== null,
-		);
+	const lookups = providers.flatMap((provider) => {
+		if (track.isrc && provider.findByIsrc) {
+			const { isrc } = track;
+			const findByIsrc = provider.findByIsrc;
+			return [{ provider, run: () => findByIsrc(isrc) }];
+		}
+		if (provider.findByTrack) {
+			const findByTrack = provider.findByTrack;
+			return [{ provider, run: () => findByTrack(track) }];
+		}
+		return [];
+	});
 
 	const outcomes = await Promise.allSettled(
 		lookups.map(

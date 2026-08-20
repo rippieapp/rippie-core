@@ -153,6 +153,7 @@ export const createAppleMusicProvider = (options: ProviderOptions = {}) => {
 	const provider: Provider = {
 		platform: Platform.AppleMusic,
 		matches: (url) => APPLE_URL_PATTERN.test(url),
+		extractId: extractAppleId,
 		fetchTrack: lookupAppleTrackByLink,
 		findByTrack: async (track) => {
 			const artist = track.artists[0];

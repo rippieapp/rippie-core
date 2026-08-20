@@ -133,6 +133,7 @@ export const createYtMusicProvider = (options: ProviderOptions = {}) => {
 	const provider: Provider = {
 		platform: Platform.YouTubeMusic,
 		matches: (url) => YT_MUSIC_URL_PATTERN.test(url),
+		extractId: extractYtMusicId,
 		fetchTrack: lookupYtMusicTrackByLink,
 		findByTrack: async (track) => {
 			const artist = track.artists[0];

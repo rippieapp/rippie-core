@@ -106,6 +106,7 @@ export const createDeezerProvider = (options: ProviderOptions = {}) => {
 	const provider: Provider = {
 		platform: Platform.Deezer,
 		matches: isDeezerTrackUrl,
+		extractId: extractDeezerTrackId,
 		fetchTrack: async (url) => {
 			const trackId = await extractDeezerTrackId(url);
 			if (!trackId) return null;

@@ -34,6 +34,17 @@ export type Provider = {
 	findByIsrc?: (isrc: string) => Promise<string | null>;
 	/** Finds this platform's link by matching artist and title text. */
 	findByTrack?: (track: TrackInfo) => Promise<string | null>;
+	/**
+	 * Extracts this provider's own stable per-track id from one of its links — the numeric
+	 * Spotify/Tidal/Apple id, the Deezer track id, the YouTube video id. Combined with
+	 * `platform` this becomes the cache key, so a link with query-string or storefront
+	 * variation still hits the same cache entry, and a link already known as a resolved target
+	 * on another platform is found before any provider is called at all.
+	 *
+	 * Optional: a provider that omits this still works, just without those two benefits — its
+	 * links are cached by their exact URL string instead.
+	 */
+	extractId?: (url: string) => Awaitable<string | null>;
 };
 
 /** Options every provider factory accepts. */

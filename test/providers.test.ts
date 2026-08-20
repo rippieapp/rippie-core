@@ -3,6 +3,7 @@ import { createAppleMusicProvider } from '../src/providers/appleMusic.js';
 import { createDeezerProvider } from '../src/providers/deezer.js';
 import { createSpotifyProvider } from '../src/providers/spotify.js';
 import { createTidalProvider } from '../src/providers/tidal.js';
+import { createYtMusicProvider } from '../src/providers/ytMusic.js';
 import { failingFetch, mockFetch, respondFrom } from './mockFetch.js';
 
 const CREDENTIALS = { clientId: 'id', clientSecret: 'secret' };
@@ -364,5 +365,44 @@ describe('apple music provider', () => {
 
 		const track = await apple.fetchTrack('https://music.apple.com/us/album/x/1?i=1');
 		expect(track?.isrc).toBeNull();
+	});
+});
+
+describe('extractId', () => {
+	test('every built-in provider extracts a stable per-track id', async () => {
+		const spotify = createSpotifyProvider(CREDENTIALS);
+		expect(await spotify.extractId?.('https://open.spotify.com/track/abc123?si=x')).toBe(
+			'abc123',
+		);
+
+		const tidal = createTidalProvider(CREDENTIALS);
+		expect(await tidal.extractId?.('https://tidal.com/browse/track/77692506')).toBe('77692506');
+
+		const apple = createAppleMusicProvider();
+		expect(
+			await apple.extractId?.('https://music.apple.com/us/album/x/1864036276?i=1864036284'),
+		).toBe('1864036284');
+
+		const deezer = createDeezerProvider();
+		expect(await deezer.extractId?.('https://www.deezer.com/track/3135556')).toBe('3135556');
+
+		const ytMusic = createYtMusicProvider();
+		expect(await ytMusic.extractId?.('https://music.youtube.com/watch?v=dQw4w9WgXcQ')).toBe(
+			'dQw4w9WgXcQ',
+		);
+	});
+
+	test('returns null for a url the provider does not recognize', async () => {
+		const spotify = createSpotifyProvider(CREDENTIALS);
+		expect(await spotify.extractId?.('https://www.deezer.com/track/1')).toBeNull();
+	});
+
+	test("deezer's extractId follows a short share link, same as extractDeezerTrackId", async () => {
+		const http = mockFetch({
+			'link.deezer.com/s/': () => respondFrom('https://www.deezer.com/en/track/3135556'),
+		});
+		const deezer = createDeezerProvider({ fetch: http.fetch });
+
+		expect(await deezer.extractId?.('https://link.deezer.com/s/abc')).toBe('3135556');
 	});
 });

@@ -165,6 +165,7 @@ export const createSpotifyProvider = (options: SpotifyProviderOptions) => {
 	const provider: Provider = {
 		platform: Platform.Spotify,
 		matches: (url) => extractSpotifyTrackId(url) !== null,
+		extractId: extractSpotifyTrackId,
 		fetchTrack: async (url) => {
 			const trackId = extractSpotifyTrackId(url);
 			if (!trackId) return null;
