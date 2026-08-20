@@ -269,4 +269,65 @@ describe('startPruning', () => {
 		expect(afterStop).toBeGreaterThan(0);
 		expect(pruned).toBe(afterStop);
 	});
+
+	test('an async adapter rejecting does not crash the process', async () => {
+		// Regression: `void cache.prune()` discarded the promise without a catch, so a
+		// user-supplied async adapter (Redis, Postgres — both documented in the README) that
+		// rejects would surface as an unhandled rejection and crash the host process.
+		const originalConsoleError = console.error;
+		const loggedErrors: unknown[] = [];
+		console.error = (...args: unknown[]) => {
+			loggedErrors.push(args);
+		};
+
+		try {
+			const rippie = createRippie({
+				cache: {
+					getTrack: () => null,
+					setTrack: () => {},
+					getLinks: () => null,
+					setLinks: () => {},
+					prune: () => Promise.reject(new Error('adapter unreachable')),
+				},
+			});
+
+			const stop = rippie.startPruning(1);
+			await Bun.sleep(15);
+			stop();
+
+			expect(loggedErrors.length).toBeGreaterThan(0);
+		} finally {
+			console.error = originalConsoleError;
+		}
+	});
+
+	test('an adapter throwing synchronously does not crash the process', async () => {
+		const originalConsoleError = console.error;
+		const loggedErrors: unknown[] = [];
+		console.error = (...args: unknown[]) => {
+			loggedErrors.push(args);
+		};
+
+		try {
+			const rippie = createRippie({
+				cache: {
+					getTrack: () => null,
+					setTrack: () => {},
+					getLinks: () => null,
+					setLinks: () => {},
+					prune: () => {
+						throw new Error('adapter misconfigured');
+					},
+				},
+			});
+
+			const stop = rippie.startPruning(1);
+			await Bun.sleep(15);
+			stop();
+
+			expect(loggedErrors.length).toBeGreaterThan(0);
+		} finally {
+			console.error = originalConsoleError;
+		}
+	});
 });

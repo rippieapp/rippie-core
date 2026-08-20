@@ -172,7 +172,16 @@ export const createRippie = (options: RippieOptions = {}) => {
 	 */
 	const startPruning = (intervalMs: number = PRUNE_INTERVAL_MS): (() => void) => {
 		const timer = setInterval(() => {
-			void cache.prune();
+			try {
+				// A user-supplied async cache adapter can reject; `Promise.resolve` normalizes
+				// both that and a synchronous return so the same catch covers both. A rejection
+				// or throw here must not crash the host process over a routine cleanup tick.
+				Promise.resolve(cache.prune()).catch((error: unknown) => {
+					console.error('rippie: cache prune failed', error);
+				});
+			} catch (error) {
+				console.error('rippie: cache prune failed', error);
+			}
 		}, intervalMs);
 		(timer as { unref?: () => void }).unref?.();
 		return () => clearInterval(timer);
