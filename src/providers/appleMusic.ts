@@ -12,79 +12,80 @@
  * when the track exists on Apple Music. See https://developer.apple.com/forums/thread/802700.
  */
 
-import { pickBestDeezerTrack } from '../deezerBridge.js';
-import { pickBestMatch } from '../match.js';
-import { Platform } from '../platform.js';
-import type { FetchLike, Provider, ProviderOptions, TrackInfo } from '../types.js';
+import { pickBestDeezerTrack } from '../deezerBridge.js'
+import { pickBestMatch } from '../match.js'
+import { Platform } from '../platform.js'
+import type { FetchLike, Provider, ProviderOptions, TrackInfo } from '../types.js'
 
 type ITunesResult = {
-	trackId: number;
-	artistName: string;
-	collectionName: string;
-	trackName?: string;
-	trackViewUrl?: string;
-};
+	trackId: number
+	artistName: string
+	collectionName: string
+	trackName?: string
+	trackViewUrl?: string
+}
 
 type ITunesLookupResponse = {
-	results: ITunesResult[];
-};
+	results: ITunesResult[]
+}
 
-const APPLE_URL_PATTERN = /music\.apple\.com\/[a-z]{2}\/album\//;
+const APPLE_URL_PATTERN = /music\.apple\.com\/[a-z]{2}\/(?:album|song)\//
 
-// Prefers the ?i= track parameter over the album ID in the path.
+// Prefers the ?i= track parameter (an /album/ link) over the trailing path id (a /song/ link,
+// which has no ?i= at all — the id at the end of the path already is the track id).
 const extractAppleId = (url: string): string | null => {
-	const trackMatch = url.match(/[?&]i=(\d+)/);
-	if (trackMatch) return trackMatch[1] ?? null;
+	const trackMatch = url.match(/[?&]i=(\d+)/)
+	if (trackMatch) return trackMatch[1] ?? null
 
-	const albumMatch = url.match(/\/(\d+)(?:\?|$)/);
-	return albumMatch?.[1] ?? null;
-};
+	const trailingIdMatch = url.match(/\/(\d+)(?:\?|$)/)
+	return trailingIdMatch?.[1] ?? null
+}
 
 /** Apple Music needs no credentials. */
 export const createAppleMusicProvider = (options: ProviderOptions = {}) => {
-	const fetchImpl: FetchLike = options.fetch ?? fetch;
+	const fetchImpl: FetchLike = options.fetch ?? fetch
 
 	// Batch-fetches iTunes records.
 	const fetchITunesRecords = async (ids: string): Promise<ITunesResult[]> => {
 		try {
-			const response = await fetchImpl(`https://itunes.apple.com/lookup?id=${ids}`);
-			if (!response.ok) return [];
-			const json = (await response.json()) as ITunesLookupResponse;
-			return json.results ?? [];
+			const response = await fetchImpl(`https://itunes.apple.com/lookup?id=${ids}`)
+			if (!response.ok) return []
+			const json = (await response.json()) as ITunesLookupResponse
+			return json.results ?? []
 		} catch {
-			return [];
+			return []
 		}
-	};
+	}
 
 	/** Searches the iTunes Search API and picks the closest title match, then closest artist. */
 	const lookupAppleTrackByInfo = async (artist: string, song: string): Promise<string | null> => {
 		try {
-			const searchQuery = `${artist} ${song}`;
-			const searchUrl = `https://itunes.apple.com/search?term=${encodeURIComponent(searchQuery)}&media=music&entity=song&limit=25`;
+			const searchQuery = `${artist} ${song}`
+			const searchUrl = `https://itunes.apple.com/search?term=${encodeURIComponent(searchQuery)}&media=music&entity=song&limit=25`
 
-			const response = await fetchImpl(searchUrl);
-			if (!response.ok) return null;
+			const response = await fetchImpl(searchUrl)
+			if (!response.ok) return null
 
-			const json = (await response.json()) as ITunesLookupResponse;
-			if (!json.results || json.results.length === 0) return null;
+			const json = (await response.json()) as ITunesLookupResponse
+			if (!json.results || json.results.length === 0) return null
 
 			const candidates = json.results.filter(
 				(result): result is ITunesResult & { trackViewUrl: string; trackName: string } =>
 					Boolean(result.trackViewUrl && result.trackName),
-			);
+			)
 
 			const best = pickBestMatch(
 				{ artist, title: song },
 				candidates,
 				(c) => c.artistName,
 				(c) => c.trackName,
-			);
+			)
 
-			return best?.trackViewUrl ?? null;
+			return best?.trackViewUrl ?? null
 		} catch {
-			return null;
+			return null
 		}
-	};
+	}
 
 	/**
 	 * Resolves an Apple Music link to track info.
@@ -92,29 +93,29 @@ export const createAppleMusicProvider = (options: ProviderOptions = {}) => {
 	 */
 	const lookupAppleTrackByLink = async (url: string): Promise<TrackInfo | null> => {
 		try {
-			const appleId = extractAppleId(url);
-			if (!appleId) return null;
+			const appleId = extractAppleId(url)
+			if (!appleId) return null
 
-			const record = (await fetchITunesRecords(appleId))[0];
-			if (!record) return null;
+			const record = (await fetchITunesRecords(appleId))[0]
+			if (!record) return null
 
-			const artistName = record.artistName;
-			const trackName = record.trackName ?? record.collectionName;
+			const artistName = record.artistName
+			const trackName = record.trackName ?? record.collectionName
 			const deezerMatch = await pickBestDeezerTrack(
 				{ artist: artistName, title: trackName },
 				fetchImpl,
-			);
+			)
 
 			return {
 				name: trackName,
 				artists: [artistName],
 				isrc: deezerMatch?.isrc ?? null,
 				link: url,
-			};
+			}
 		} catch {
-			return null;
+			return null
 		}
-	};
+	}
 
 	const provider: Provider = {
 		platform: Platform.AppleMusic,
@@ -122,13 +123,13 @@ export const createAppleMusicProvider = (options: ProviderOptions = {}) => {
 		extractId: extractAppleId,
 		fetchTrack: lookupAppleTrackByLink,
 		findByTrack: async (track) => {
-			const artist = track.artists[0];
-			if (!artist || !track.name) return null;
-			return lookupAppleTrackByInfo(artist, track.name);
+			const artist = track.artists[0]
+			if (!artist || !track.name) return null
+			return lookupAppleTrackByInfo(artist, track.name)
 		},
-	};
+	}
 
-	return { ...provider, lookupAppleTrackByInfo, lookupAppleTrackByLink };
-};
+	return { ...provider, lookupAppleTrackByInfo, lookupAppleTrackByLink }
+}
 
-export type AppleMusicProvider = ReturnType<typeof createAppleMusicProvider>;
+export type AppleMusicProvider = ReturnType<typeof createAppleMusicProvider>

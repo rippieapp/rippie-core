@@ -13,27 +13,27 @@
  * `exports` map, a missing `files` entry, or an emitted import that Node cannot resolve.
  */
 
-import assert from 'node:assert/strict';
+import assert from 'node:assert/strict'
 import {
 	createMemoryTrackCache,
 	createRippie,
 	detectMusicPlatform,
 	normalizeText,
 	Platform,
-} from '@rippieapp/core';
+} from '@rippieapp/core'
 
 // Pure helpers.
-assert.equal(detectMusicPlatform('https://open.spotify.com/track/abc123'), Platform.Spotify);
-assert.equal(detectMusicPlatform('https://example.com/x'), null);
-assert.equal(normalizeText('Song (Official Video)'), 'song');
+assert.equal(detectMusicPlatform('https://open.spotify.com/track/abc123'), Platform.Spotify)
+assert.equal(detectMusicPlatform('https://example.com/x'), null)
+assert.equal(normalizeText('Song (Official Video)'), 'song')
 
 // The memory cache honors its TTL contract.
-let clock = 0;
-const cache = createMemoryTrackCache({ now: () => clock, defaultTtlMs: 1000 });
-cache.setTrack('u', { name: 'T', artists: ['A'], isrc: 'I', link: 'L' });
-assert.ok(cache.getTrack('u'));
-clock = 1000;
-assert.equal(cache.getTrack('u'), null);
+let clock = 0
+const cache = createMemoryTrackCache({ now: () => clock, defaultTtlMs: 1000 })
+cache.setTrack('u', { name: 'T', artists: ['A'], isrc: 'I', link: 'L' })
+assert.ok(cache.getTrack('u'))
+clock = 1000
+assert.equal(cache.getTrack('u'), null)
 
 // The full pipeline runs against stub providers, so nothing here touches the network.
 const rippie = createRippie({
@@ -57,15 +57,15 @@ const rippie = createRippie({
 			findByIsrc: async () => 'https://www.deezer.com/en/track/1',
 		},
 	],
-});
+})
 
-const result = await rippie.resolve('https://open.spotify.com/track/abc123');
-assert.equal(result.status, 'ok');
-assert.equal(result.links.get(Platform.Deezer), 'https://www.deezer.com/en/track/1');
+const result = await rippie.resolve('https://open.spotify.com/track/abc123')
+assert.equal(result.status, 'ok')
+assert.equal(result.links.get(Platform.Deezer), 'https://www.deezer.com/en/track/1')
 
 // The optional subpath resolves and exposes its DDL.
-const { CACHE_TABLES_SQL, createSqliteTrackCache } = await import('@rippieapp/core/cache-sqlite');
-assert.equal(CACHE_TABLES_SQL.length, 4);
-assert.equal(typeof createSqliteTrackCache, 'function');
+const { CACHE_TABLES_SQL, createSqliteTrackCache } = await import('@rippieapp/core/cache-sqlite')
+assert.equal(CACHE_TABLES_SQL.length, 4)
+assert.equal(typeof createSqliteTrackCache, 'function')
 
-console.log(`OK on Node ${process.version}`);
+console.log(`OK on Node ${process.version}`)

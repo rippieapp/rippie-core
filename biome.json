@@ -28,7 +28,7 @@
 	},
 	"javascript": {
 		"formatter": {
-			"semicolons": "always",
+			"semicolons": "asNeeded",
 			"quoteStyle": "single",
 			"trailingCommas": "all",
 			"bracketSpacing": true,

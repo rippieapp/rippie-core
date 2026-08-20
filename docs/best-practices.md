@@ -25,7 +25,7 @@ and consistent.
 ## 4. Architecture & Clean Code
 
 - **Async/Await:** Always use `async/await`. Avoid `.then().catch()` chains. Handle errors gracefully.
-- **Factories over module state:** Anything stateful (tokens, clients, caches) is created by a factory and scoped to the instance. Module-level mutable state is not allowed — see [architecture.md](architecture.md).
-- **Encapsulation:** Do not export types or helper functions unless they are actively used outside the file. Keep the public API surface small. `src/index.ts` is the contract; everything else is internal.
+- **Factories over module state:** Anything stateful (tokens, clients, caches) is created by a factory and scoped to the instance. Module-level mutable state is not allowed, see [architecture.md](architecture.md).
+- **Encapsulation:** Do not export types or helper functions unless they are actively used outside the file. Keep the public API surface small. `src/index.ts` is the contract, everything else is internal.
 - **Relative imports carry `.js` extensions.** The emitted output must resolve under Node's ESM rules.
 - **Comments:** Comment the _why_, not the _what_ (see `cache/types.ts` for an example of explaining _why_ the TTLs are split).

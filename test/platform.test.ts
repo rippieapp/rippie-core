@@ -1,5 +1,5 @@
-import { describe, expect, test } from 'bun:test';
-import { detectMusicPlatform, Platform } from '../src/platform.js';
+import { describe, expect, test } from 'bun:test'
+import { detectMusicPlatform, Platform } from '../src/platform.js'
 
 describe('detectMusicPlatform', () => {
 	test('detects every supported track link shape', () => {
@@ -10,6 +10,7 @@ describe('detectMusicPlatform', () => {
 				'https://music.apple.com/us/album/never-gonna-give-you-up/1558533900?i=1558534271',
 				Platform.AppleMusic,
 			],
+			['https://music.apple.com/us/song/unico/1864036284', Platform.AppleMusic],
 			['https://music.youtube.com/watch?v=dQw4w9WgXcQ', Platform.YouTubeMusic],
 			['https://music.youtube.com/watch?v=dQw4w9WgXcQ&list=RDAMVM', Platform.YouTubeMusic],
 			['https://www.deezer.com/track/3135556', Platform.Deezer],
@@ -17,12 +18,12 @@ describe('detectMusicPlatform', () => {
 			['https://link.deezer.com/s/33HJubg3npxgAGfoCij0m', Platform.Deezer],
 			['https://tidal.com/browse/track/77692506', Platform.Tidal],
 			['https://listen.tidal.com/track/77692506', Platform.Tidal],
-		];
+		]
 
 		for (const [url, expected] of cases) {
-			expect(detectMusicPlatform(url)).toBe(expected);
+			expect(detectMusicPlatform(url)).toBe(expected)
 		}
-	});
+	})
 
 	test('rejects links that are not individual tracks', () => {
 		const rejected = [
@@ -35,14 +36,14 @@ describe('detectMusicPlatform', () => {
 			'https://example.com/track/1',
 			'not a url at all',
 			'',
-		];
+		]
 
 		for (const url of rejected) {
-			expect(detectMusicPlatform(url)).toBeNull();
+			expect(detectMusicPlatform(url)).toBeNull()
 		}
-	});
+	})
 
 	test('only matches links anchored at the start of the string', () => {
-		expect(detectMusicPlatform('look at https://open.spotify.com/track/abc123')).toBeNull();
-	});
-});
+		expect(detectMusicPlatform('look at https://open.spotify.com/track/abc123')).toBeNull()
+	})
+})

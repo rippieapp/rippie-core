@@ -3,7 +3,7 @@ name: Release
 # Tags are CalVer with a zero-padded month and day: 2026.08.19, or 2026.08.19-rc1 for a
 # prerelease. The glob below matches both.
 #
-# npm versions cannot carry the padding — SemVer forbids leading zeroes in numeric identifiers, so
+# npm versions cannot carry the padding, SemVer forbids leading zeroes in numeric identifiers, so
 # `2026.08.19` is rejected while `2026.8.19` is accepted. package.json therefore holds the unpadded
 # form and this workflow normalizes the tag before comparing them.
 on:
@@ -43,7 +43,7 @@ jobs:
       - name: Setup Node
         uses: actions/setup-node@v7
         with:
-          # Active LTS; ships npm 11.x, which trusted publishing requires (>= 11.5.1).
+          # Active LTS, ships npm 11.x, which trusted publishing requires (>= 11.5.1).
           node-version: 24.x
           registry-url: https://registry.npmjs.org
 

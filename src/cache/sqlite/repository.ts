@@ -1,7 +1,7 @@
-import { and, eq, gt, inArray, lte } from 'drizzle-orm';
-import type { BaseSQLiteDatabase } from 'drizzle-orm/sqlite-core';
-import type { Platform } from '../../platform.js';
-import type { TrackInfo } from '../../types.js';
+import { and, eq, gt, inArray, lte } from 'drizzle-orm'
+import type { BaseSQLiteDatabase } from 'drizzle-orm/sqlite-core'
+import type { Platform } from '../../platform.js'
+import type { TrackInfo } from '../../types.js'
 import {
 	type CachedPlatformLinks,
 	type CacheTtlOptions,
@@ -9,8 +9,8 @@ import {
 	DEFAULT_TTL_MS,
 	type ResolvedTrack,
 	type TrackCache,
-} from '../types.js';
-import { resolvedLinkCache, resolvedLinkCacheLinks, trackCache } from './schema.js';
+} from '../types.js'
+import { resolvedLinkCache, resolvedLinkCacheLinks, trackCache } from './schema.js'
 
 /**
  * Any synchronous drizzle SQLite database.
@@ -21,50 +21,50 @@ import { resolvedLinkCache, resolvedLinkCacheLinks, trackCache } from './schema.
  * SQLite import.
  */
 // biome-ignore lint/suspicious/noExplicitAny: drizzle's base type is generic over driver internals.
-export type SqliteDatabase = BaseSQLiteDatabase<'sync', any, any>;
+export type SqliteDatabase = BaseSQLiteDatabase<'sync', any, any>
 
 export type SqliteTrackCacheOptions = CacheTtlOptions & {
-	db: SqliteDatabase;
-};
+	db: SqliteDatabase
+}
 
 const parseArtists = (artistsJson: string): string[] => {
-	const artists: unknown = JSON.parse(artistsJson);
+	const artists: unknown = JSON.parse(artistsJson)
 	if (!Array.isArray(artists) || !artists.every((artist) => typeof artist === 'string')) {
-		throw new Error('Cached track artists are invalid.');
+		throw new Error('Cached track artists are invalid.')
 	}
-	return artists;
-};
+	return artists
+}
 
 /**
  * Creates a durable SQLite-backed cache.
  *
  * Entries survive a restart, so a process crash does not discard successful or negative lookup
- * results. The caller owns the database handle and its migrations; see the package README for the
+ * results. The caller owns the database handle and its migrations. See the package README for the
  * three tables this adapter expects.
  */
 export const createSqliteTrackCache = (options: SqliteTrackCacheOptions): TrackCache => {
-	const { db } = options;
-	const defaultTtlMs = options.defaultTtlMs ?? DEFAULT_TTL_MS;
-	const negativeTtlMs = options.negativeTtlMs ?? DEFAULT_NEGATIVE_TTL_MS;
-	const now = options.now ?? ((): number => Date.now());
+	const { db } = options
+	const defaultTtlMs = options.defaultTtlMs ?? DEFAULT_TTL_MS
+	const negativeTtlMs = options.negativeTtlMs ?? DEFAULT_NEGATIVE_TTL_MS
+	const now = options.now ?? ((): number => Date.now())
 
 	const getLinks = (isrc: string): ResolvedTrack | null => {
 		const cacheEntry = db
 			.select()
 			.from(resolvedLinkCache)
 			.where(and(eq(resolvedLinkCache.isrc, isrc), gt(resolvedLinkCache.expiresAt, now())))
-			.get();
-		if (!cacheEntry) return null;
+			.get()
+		if (!cacheEntry) return null
 
 		const links = db
 			.select()
 			.from(resolvedLinkCacheLinks)
 			.where(eq(resolvedLinkCacheLinks.isrc, isrc))
-			.all();
+			.all()
 
 		return {
 			// The caller knows which platform's link it just read this from and overrides `link`
-			// accordingly; at the ISRC level there is no single canonical link to report here.
+			// accordingly. At the ISRC level there is no single canonical link to report here.
 			track: {
 				name: cacheEntry.trackName,
 				artists: parseArtists(cacheEntry.artistsJson),
@@ -72,8 +72,8 @@ export const createSqliteTrackCache = (options: SqliteTrackCacheOptions): TrackC
 				link: null,
 			},
 			links: new Map(links.map(({ platform, link }) => [platform as Platform, link])),
-		};
-	};
+		}
+	}
 
 	return {
 		getTrack: (url) => {
@@ -81,20 +81,20 @@ export const createSqliteTrackCache = (options: SqliteTrackCacheOptions): TrackC
 				.select()
 				.from(trackCache)
 				.where(and(eq(trackCache.sourceUrl, url), gt(trackCache.expiresAt, now())))
-				.get();
-			if (!row) return null;
+				.get()
+			if (!row) return null
 
 			return {
 				name: row.trackName,
 				artists: parseArtists(row.artistsJson),
 				isrc: row.isrc,
 				link: row.link,
-			};
+			}
 		},
 
 		setTrack: (url: string, track: TrackInfo, ttlMs?: number) => {
-			const isIncomplete = track.isrc == null || track.link == null;
-			const effectiveTtl = ttlMs ?? (isIncomplete ? negativeTtlMs : defaultTtlMs);
+			const isIncomplete = track.isrc == null || track.link == null
+			const effectiveTtl = ttlMs ?? (isIncomplete ? negativeTtlMs : defaultTtlMs)
 			const values = {
 				sourceUrl: url,
 				trackName: track.name,
@@ -102,11 +102,11 @@ export const createSqliteTrackCache = (options: SqliteTrackCacheOptions): TrackC
 				isrc: track.isrc,
 				link: track.link,
 				expiresAt: now() + effectiveTtl,
-			};
+			}
 			db.insert(trackCache)
 				.values(values)
 				.onConflictDoUpdate({ target: trackCache.sourceUrl, set: values })
-				.run();
+				.run()
 		},
 
 		getLinks,
@@ -117,14 +117,14 @@ export const createSqliteTrackCache = (options: SqliteTrackCacheOptions): TrackC
 			incoming: CachedPlatformLinks,
 			ttlMs?: number,
 		) => {
-			const timestamp = now();
+			const timestamp = now()
 			db.transaction((transaction) => {
 				const existing = transaction
 					.select()
 					.from(resolvedLinkCache)
 					.where(eq(resolvedLinkCache.isrc, isrc))
-					.get();
-				const isExpired = !existing || timestamp >= existing.expiresAt;
+					.get()
+				const isExpired = !existing || timestamp >= existing.expiresAt
 				if (isExpired && existing) {
 					// Deleted explicitly rather than left to ON DELETE CASCADE: SQLite disables
 					// foreign key enforcement per connection by default, so a caller that never
@@ -134,16 +134,16 @@ export const createSqliteTrackCache = (options: SqliteTrackCacheOptions): TrackC
 					transaction
 						.delete(resolvedLinkCacheLinks)
 						.where(eq(resolvedLinkCacheLinks.isrc, isrc))
-						.run();
+						.run()
 					transaction
 						.delete(resolvedLinkCache)
 						.where(eq(resolvedLinkCache.isrc, isrc))
-						.run();
+						.run()
 				}
 
 				const existingLinks: CachedPlatformLinks = isExpired
 					? new Map()
-					: (getLinks(isrc)?.links ?? new Map());
+					: (getLinks(isrc)?.links ?? new Map())
 				// Whether the entry was ALREADY partial before this merge, as opposed to merely
 				// having a null in the merge result. A complete entry widened with one new miss
 				// (e.g. a newly-enabled provider) must get a fresh negative TTL, not inherit the
@@ -151,13 +151,13 @@ export const createSqliteTrackCache = (options: SqliteTrackCacheOptions): TrackC
 				const wasAlreadyPartial =
 					!isExpired &&
 					existing &&
-					[...existingLinks.values()].some((link) => link == null);
+					[...existingLinks.values()].some((link) => link == null)
 
-				const merged: CachedPlatformLinks = new Map(existingLinks);
-				for (const [platform, link] of incoming) merged.set(platform, link);
+				const merged: CachedPlatformLinks = new Map(existingLinks)
+				for (const [platform, link] of incoming) merged.set(platform, link)
 
-				const hasNull = [...merged.values()].some((link) => link == null);
-				// Preserve the existing expiry only when the retry is STILL partial — that is
+				const hasNull = [...merged.values()].some((link) => link == null)
+				// Preserve the existing expiry only when the retry is STILL partial, that is
 				// the "don't extend a negative window" case. A retry that completes a partial
 				// entry, or a complete entry gaining a fresh miss, both fall through to a
 				// freshly computed TTL.
@@ -166,12 +166,12 @@ export const createSqliteTrackCache = (options: SqliteTrackCacheOptions): TrackC
 						? timestamp + ttlMs
 						: wasAlreadyPartial && hasNull && existing
 							? existing.expiresAt
-							: timestamp + (hasNull ? negativeTtlMs : defaultTtlMs);
+							: timestamp + (hasNull ? negativeTtlMs : defaultTtlMs)
 
 				const trackValues = {
 					trackName: track.name,
 					artistsJson: JSON.stringify(track.artists),
-				};
+				}
 				transaction
 					.insert(resolvedLinkCache)
 					.values({ isrc, ...trackValues, expiresAt })
@@ -179,7 +179,7 @@ export const createSqliteTrackCache = (options: SqliteTrackCacheOptions): TrackC
 						target: resolvedLinkCache.isrc,
 						set: { ...trackValues, expiresAt },
 					})
-					.run();
+					.run()
 				for (const [platform, link] of merged) {
 					transaction
 						.insert(resolvedLinkCacheLinks)
@@ -188,9 +188,9 @@ export const createSqliteTrackCache = (options: SqliteTrackCacheOptions): TrackC
 							target: [resolvedLinkCacheLinks.isrc, resolvedLinkCacheLinks.platform],
 							set: { link },
 						})
-						.run();
+						.run()
 				}
-			});
+			})
 		},
 
 		findIsrcByLink: (platform: Platform, link: string) => {
@@ -208,31 +208,31 @@ export const createSqliteTrackCache = (options: SqliteTrackCacheOptions): TrackC
 						gt(resolvedLinkCache.expiresAt, now()),
 					),
 				)
-				.get();
-			return row?.isrc ?? null;
+				.get()
+			return row?.isrc ?? null
 		},
 
 		prune: () => {
-			const timestamp = now();
+			const timestamp = now()
 			db.transaction((transaction) => {
-				transaction.delete(trackCache).where(lte(trackCache.expiresAt, timestamp)).run();
+				transaction.delete(trackCache).where(lte(trackCache.expiresAt, timestamp)).run()
 
 				// Children are deleted via a subquery on the about-to-expire parents, then the
-				// parents themselves — see the comment in setLinks on why this isn't left to
+				// parents themselves. See the comment in setLinks on why this isn't left to
 				// ON DELETE CASCADE.
 				const expiringIsrcs = transaction
 					.select({ isrc: resolvedLinkCache.isrc })
 					.from(resolvedLinkCache)
-					.where(lte(resolvedLinkCache.expiresAt, timestamp));
+					.where(lte(resolvedLinkCache.expiresAt, timestamp))
 				transaction
 					.delete(resolvedLinkCacheLinks)
 					.where(inArray(resolvedLinkCacheLinks.isrc, expiringIsrcs))
-					.run();
+					.run()
 				transaction
 					.delete(resolvedLinkCache)
 					.where(lte(resolvedLinkCache.expiresAt, timestamp))
-					.run();
-			});
+					.run()
+			})
 		},
-	};
-};
+	}
+}

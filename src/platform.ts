@@ -4,17 +4,17 @@ export const Platform = {
 	YouTubeMusic: 'YouTube Music',
 	Deezer: 'Deezer',
 	Tidal: 'Tidal',
-} as const;
+} as const
 
 /**
  * One of the five built-in platform names, or any other string a custom `Provider` names itself.
  *
  * `string & {}` rather than plain `string` keeps the five built-in names showing up in editor
- * autocomplete while still accepting anything else — the widening a third-party `Provider` needs
+ * autocomplete while still accepting anything else, the widening a third-party `Provider` needs
  * to type-check at all. See docs/architecture.md and the "Teaching her a new platform" section of
  * the README.
  */
-export type Platform = (typeof Platform)[keyof typeof Platform] | (string & {});
+export type Platform = (typeof Platform)[keyof typeof Platform] | (string & {})
 
 const platformPatterns: { platform: Platform; pattern: RegExp }[] = [
 	{
@@ -23,7 +23,8 @@ const platformPatterns: { platform: Platform; pattern: RegExp }[] = [
 	},
 	{
 		platform: Platform.AppleMusic,
-		pattern: /^https?:\/\/music\.apple\.com\/[a-z]{2}\/album\/[^/]+\/\d+(?:\?i=\d+)?(?:$|\?|&)/,
+		pattern:
+			/^https?:\/\/music\.apple\.com\/[a-z]{2}\/(?:album|song)\/[^/]+\/\d+(?:\?i=\d+)?(?:$|\?|&)/,
 	},
 	{
 		platform: Platform.YouTubeMusic,
@@ -38,14 +39,14 @@ const platformPatterns: { platform: Platform; pattern: RegExp }[] = [
 		platform: Platform.Tidal,
 		pattern: /^https?:\/\/(?:[a-zA-Z0-9-]+\.)?tidal\.com\/(?:browse\/)?track\/([0-9]+)/,
 	},
-];
+]
 
 /** Detects which music platform a URL belongs to using regex matching. */
 export const detectMusicPlatform = (url: string): Platform | null => {
 	for (const { platform, pattern } of platformPatterns) {
 		if (pattern.test(url)) {
-			return platform;
+			return platform
 		}
 	}
-	return null;
-};
+	return null
+}

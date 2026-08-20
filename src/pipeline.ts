@@ -1,36 +1,36 @@
-import { createMemoryTrackCache } from './cache/memory.js';
-import type { CachedPlatformLinks, TrackCache } from './cache/types.js';
-import { detectMusicPlatform, Platform } from './platform.js';
-import { createAppleMusicProvider } from './providers/appleMusic.js';
-import { createDeezerProvider } from './providers/deezer.js';
-import { createSpotifyProvider } from './providers/spotify.js';
-import { createTidalProvider } from './providers/tidal.js';
-import { createYtMusicProvider } from './providers/ytMusic.js';
-import { resolveLinksFromTrack } from './resolver.js';
-import type { ClientCredentials, FetchLike, Provider, ResolvedLinks, TrackInfo } from './types.js';
+import { createMemoryTrackCache } from './cache/memory.js'
+import type { CachedPlatformLinks, TrackCache } from './cache/types.js'
+import { detectMusicPlatform, Platform } from './platform.js'
+import { createAppleMusicProvider } from './providers/appleMusic.js'
+import { createDeezerProvider } from './providers/deezer.js'
+import { createSpotifyProvider } from './providers/spotify.js'
+import { createTidalProvider } from './providers/tidal.js'
+import { createYtMusicProvider } from './providers/ytMusic.js'
+import { resolveLinksFromTrack } from './resolver.js'
+import type { ClientCredentials, FetchLike, Provider, ResolvedLinks, TrackInfo } from './types.js'
 
 export type RippieOptions = {
 	/** Spotify Web API client credentials. Omit to disable Spotify. */
-	spotify?: ClientCredentials;
+	spotify?: ClientCredentials
 	/** Tidal open API client credentials. Omit to disable Tidal. */
-	tidal?: ClientCredentials & { countryCode?: string };
+	tidal?: ClientCredentials & { countryCode?: string }
 	/** Where to persist lookups. Defaults to an in-memory cache. */
-	cache?: TrackCache;
+	cache?: TrackCache
 	/**
 	 * Restricts which built-in platforms are constructed. Defaults to all that are configured.
 	 * Providers passed via `providers` are always included regardless of this list.
 	 */
-	enabled?: Platform[];
+	enabled?: Platform[]
 	/** Extra or replacement providers, matched to built-ins by platform name. */
-	providers?: Provider[];
+	providers?: Provider[]
 	/** Injected for testing or for runtimes that need a custom fetch implementation. */
-	fetch?: FetchLike;
-};
+	fetch?: FetchLike
+}
 
 export type ResolveOptions = {
 	/** Platforms to resolve links for. Defaults to every configured platform. */
-	platforms?: Platform[];
-};
+	platforms?: Platform[]
+}
 
 /**
  * The outcome of resolving one link.
@@ -43,10 +43,10 @@ export type ResolveResult =
 	| { status: 'unresolved'; source: Platform | null }
 	/** The track was identified but carries no ISRC, so no other platform can be searched. */
 	| { status: 'no-isrc'; source: Platform; track: TrackInfo }
-	/** The track resolved; `links` holds one entry per requested platform that answered. */
-	| { status: 'ok'; source: Platform; track: TrackInfo; links: ResolvedLinks };
+	/** The track resolved. `links` holds one entry per requested platform that answered. */
+	| { status: 'ok'; source: Platform; track: TrackInfo; links: ResolvedLinks }
 
-const PRUNE_INTERVAL_MS = 60_000;
+const PRUNE_INTERVAL_MS = 60_000
 
 /**
  * Builds a configured client over the provider set.
@@ -55,66 +55,66 @@ const PRUNE_INTERVAL_MS = 60_000;
  * Spotify and Tidal appear only when their credentials are supplied.
  */
 export const createRippie = (options: RippieOptions = {}) => {
-	const fetchImpl = options.fetch;
-	const cache = options.cache ?? createMemoryTrackCache();
+	const fetchImpl = options.fetch
+	const cache = options.cache ?? createMemoryTrackCache()
 
-	const allowed = options.enabled ? new Set(options.enabled) : null;
-	const isEnabled = (platform: Platform): boolean => allowed === null || allowed.has(platform);
+	const allowed = options.enabled ? new Set(options.enabled) : null
+	const isEnabled = (platform: Platform): boolean => allowed === null || allowed.has(platform)
 
-	const builtIn: Provider[] = [];
-	if (isEnabled(Platform.Deezer)) builtIn.push(createDeezerProvider({ fetch: fetchImpl }));
+	const builtIn: Provider[] = []
+	if (isEnabled(Platform.Deezer)) builtIn.push(createDeezerProvider({ fetch: fetchImpl }))
 	if (isEnabled(Platform.AppleMusic)) {
-		builtIn.push(createAppleMusicProvider({ fetch: fetchImpl }));
+		builtIn.push(createAppleMusicProvider({ fetch: fetchImpl }))
 	}
 	if (isEnabled(Platform.YouTubeMusic)) {
-		builtIn.push(createYtMusicProvider({ fetch: fetchImpl }));
+		builtIn.push(createYtMusicProvider({ fetch: fetchImpl }))
 	}
 	if (options.spotify && isEnabled(Platform.Spotify)) {
-		builtIn.push(createSpotifyProvider({ ...options.spotify, fetch: fetchImpl }));
+		builtIn.push(createSpotifyProvider({ ...options.spotify, fetch: fetchImpl }))
 	}
 	if (options.tidal && isEnabled(Platform.Tidal)) {
-		builtIn.push(createTidalProvider({ ...options.tidal, fetch: fetchImpl }));
+		builtIn.push(createTidalProvider({ ...options.tidal, fetch: fetchImpl }))
 	}
 
 	// A supplied provider replaces the built-in for the same platform rather than duplicating it.
 	const byPlatform = new Map<Platform, Provider>(
 		builtIn.map((provider) => [provider.platform, provider]),
-	);
+	)
 	for (const provider of options.providers ?? []) {
-		byPlatform.set(provider.platform, provider);
+		byPlatform.set(provider.platform, provider)
 	}
 
-	const providers = [...byPlatform.values()];
-	const availablePlatforms = [...byPlatform.keys()];
+	const providers = [...byPlatform.values()]
+	const availablePlatforms = [...byPlatform.keys()]
 
 	/** Detects which platform a URL belongs to, or null when it is not a track link. */
-	const detect = (url: string): Platform | null => detectMusicPlatform(url);
+	const detect = (url: string): Platform | null => detectMusicPlatform(url)
 
 	/** Reads a source link into normalized track data, using layer 1 of the cache. */
 	const fetchTrack = async (url: string, platform?: Platform): Promise<TrackInfo | null> => {
-		const byRawUrl = await cache.getTrack(url);
-		if (byRawUrl) return byRawUrl;
+		const byRawUrl = await cache.getTrack(url)
+		if (byRawUrl) return byRawUrl
 
 		const provider = platform
 			? byPlatform.get(platform)
-			: providers.find((candidate) => candidate.matches(url));
-		if (!provider) return null;
+			: providers.find((candidate) => candidate.matches(url))
+		if (!provider) return null
 
 		// A canonical id collapses query-string and storefront variants of the same link onto
 		// one cache entry. Providers without extractId fall back to the exact URL, unchanged
 		// from before.
-		const canonicalId = provider.extractId ? await provider.extractId(url) : null;
-		const cacheKey = canonicalId ? `${provider.platform}:${canonicalId}` : url;
+		const canonicalId = provider.extractId ? await provider.extractId(url) : null
+		const cacheKey = canonicalId ? `${provider.platform}:${canonicalId}` : url
 
 		if (cacheKey !== url) {
-			const byCanonicalId = await cache.getTrack(cacheKey);
-			if (byCanonicalId) return byCanonicalId;
+			const byCanonicalId = await cache.getTrack(cacheKey)
+			if (byCanonicalId) return byCanonicalId
 		}
 
-		const track = await provider.fetchTrack(url);
-		if (track) await cache.setTrack(cacheKey, track);
-		return track;
-	};
+		const track = await provider.fetchTrack(url)
+		if (track) await cache.setTrack(cacheKey, track)
+		return track
+	}
 
 	/**
 	 * Resolves a source link into the same track on other platforms.
@@ -122,7 +122,7 @@ export const createRippie = (options: RippieOptions = {}) => {
 	 * `findIsrcByLink` is checked before layer 1: if this exact link was already discovered as
 	 * one of another resolve's results, its ISRC and track metadata are already known and no
 	 * provider is called at all. Otherwise layer 1 avoids re-reading the source link, and layer
-	 * 2 avoids re-searching platforms already known for this ISRC — only platforms missing from
+	 * 2 avoids re-searching platforms already known for this ISRC. Only platforms missing from
 	 * the cache are queried, and the source platform's own link is folded back in so a later
 	 * request from a different platform hits.
 	 */
@@ -130,72 +130,72 @@ export const createRippie = (options: RippieOptions = {}) => {
 		url: string,
 		resolveOptions: ResolveOptions = {},
 	): Promise<ResolveResult> => {
-		const source = detect(url);
-		if (!source) return { status: 'unresolved', source: null };
+		const source = detect(url)
+		if (!source) return { status: 'unresolved', source: null }
 
-		let track: TrackInfo | null = null;
-		let knownLinks: CachedPlatformLinks | null = null;
+		let track: TrackInfo | null = null
+		let knownLinks: CachedPlatformLinks | null = null
 
-		const reverseIsrc = await cache.findIsrcByLink(source, url);
+		const reverseIsrc = await cache.findIsrcByLink(source, url)
 		if (reverseIsrc) {
-			const known = await cache.getLinks(reverseIsrc);
+			const known = await cache.getLinks(reverseIsrc)
 			if (known) {
 				// `known.track` was discovered from whichever platform first found this ISRC,
-				// so its `link` field may point elsewhere — it must reflect the URL just
+				// so its `link` field may point elsewhere, it must reflect the URL just
 				// posted, not the one that originally found it.
-				track = { ...known.track, link: url };
-				knownLinks = known.links;
+				track = { ...known.track, link: url }
+				knownLinks = known.links
 			}
 		}
 
 		if (!track) {
-			track = await fetchTrack(url, source);
+			track = await fetchTrack(url, source)
 		}
-		if (!track) return { status: 'unresolved', source };
-		if (!track.isrc) return { status: 'no-isrc', source, track };
+		if (!track) return { status: 'unresolved', source }
+		if (!track.isrc) return { status: 'no-isrc', source, track }
 
-		const { isrc } = track;
+		const { isrc } = track
 		const requested = (resolveOptions.platforms ?? availablePlatforms).filter(
 			(platform) => platform !== source && byPlatform.has(platform),
-		);
+		)
 
 		// Seed the source platform's own link so it is cached alongside the resolved ones.
-		const sourceLinks: CachedPlatformLinks = new Map();
-		if (track.link) sourceLinks.set(source, track.link);
+		const sourceLinks: CachedPlatformLinks = new Map()
+		if (track.link) sourceLinks.set(source, track.link)
 
-		const cached = knownLinks ?? (await cache.getLinks(isrc))?.links ?? null;
-		const links: ResolvedLinks = new Map();
-		const missing: Platform[] = [];
+		const cached = knownLinks ?? (await cache.getLinks(isrc))?.links ?? null
+		const links: ResolvedLinks = new Map()
+		const missing: Platform[] = []
 
 		for (const platform of requested) {
 			if (cached?.has(platform)) {
-				const link = cached.get(platform);
-				if (link) links.set(platform, link);
+				const link = cached.get(platform)
+				if (link) links.set(platform, link)
 			} else {
-				missing.push(platform);
+				missing.push(platform)
 			}
 		}
 
 		if (missing.length > 0) {
 			const missingProviders = missing
 				.map((platform) => byPlatform.get(platform))
-				.filter((provider): provider is Provider => provider !== undefined);
-			const resolved = await resolveLinksFromTrack(missingProviders, track);
+				.filter((provider): provider is Provider => provider !== undefined)
+			const resolved = await resolveLinksFromTrack(missingProviders, track)
 
-			const payload: CachedPlatformLinks = new Map(sourceLinks);
+			const payload: CachedPlatformLinks = new Map(sourceLinks)
 			for (const [platform, link] of resolved) {
-				payload.set(platform, link);
-				if (link) links.set(platform, link);
+				payload.set(platform, link)
+				if (link) links.set(platform, link)
 			}
-			await cache.setLinks(isrc, track, payload);
+			await cache.setLinks(isrc, track, payload)
 		} else if (sourceLinks.size > 0 && !knownLinks) {
 			// A reverse-lookup hit already had this exact source link cached, so writing it
-			// back would be a no-op merge; only write when this resolve learned something new.
-			await cache.setLinks(isrc, track, sourceLinks);
+			// back would be a no-op merge. Only write when this resolve learned something new.
+			await cache.setLinks(isrc, track, sourceLinks)
 		}
 
-		return { status: 'ok', source, track, links };
-	};
+		return { status: 'ok', source, track, links }
+	}
 
 	/**
 	 * Starts periodic removal of expired cache entries.
@@ -206,21 +206,21 @@ export const createRippie = (options: RippieOptions = {}) => {
 	const startPruning = (intervalMs: number = PRUNE_INTERVAL_MS): (() => void) => {
 		const timer = setInterval(() => {
 			try {
-				// A user-supplied async cache adapter can reject; `Promise.resolve` normalizes
+				// A user-supplied async cache adapter can reject. `Promise.resolve` normalizes
 				// both that and a synchronous return so the same catch covers both. A rejection
 				// or throw here must not crash the host process over a routine cleanup tick.
 				Promise.resolve(cache.prune()).catch((error: unknown) => {
-					console.error('rippie: cache prune failed', error);
-				});
+					console.error('rippie: cache prune failed', error)
+				})
 			} catch (error) {
-				console.error('rippie: cache prune failed', error);
+				console.error('rippie: cache prune failed', error)
 			}
-		}, intervalMs);
-		(timer as { unref?: () => void }).unref?.();
-		return () => clearInterval(timer);
-	};
+		}, intervalMs)
+		;(timer as { unref?: () => void }).unref?.()
+		return () => clearInterval(timer)
+	}
 
-	return { detect, fetchTrack, resolve, startPruning, cache, providers, availablePlatforms };
-};
+	return { detect, fetchTrack, resolve, startPruning, cache, providers, availablePlatforms }
+}
 
-export type Rippie = ReturnType<typeof createRippie>;
+export type Rippie = ReturnType<typeof createRippie>

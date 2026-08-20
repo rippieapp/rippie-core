@@ -21,12 +21,12 @@ bun run build
 ```
 
 No environment variables are needed for any of that, and none should ever be. If a change makes a
-test require a secret, the change is wrong — see below.
+test require a secret, the change is wrong, see below.
 
 ## Ground rules
 
 1. **Nothing reads `process.env`.** Credentials and configuration arrive as arguments. This is the
-   constraint that makes the package testable and embeddable; it is not negotiable.
+   constraint that makes the package testable and embeddable. It is not negotiable.
 2. **No Discord, and no assumptions about a UI.** This package returns data. Rendering it is the
    consumer's job.
 3. **Nothing runtime-specific in the main entry point.** `fetch`, `URL`, `btoa`, and the standard
@@ -40,11 +40,11 @@ test require a secret, the change is wrong — see below.
 
 ## Adding a provider
 
-A provider is a plain object; see `src/providers/` for five worked examples.
+A provider is a plain object, see `src/providers/` for five worked examples.
 
 ```ts
 export const createExampleProvider = (options: ProviderOptions = {}) => {
-	const fetchImpl = options.fetch ?? fetch;
+	const fetchImpl = options.fetch ?? fetch
 	// …
 	return {
 		platform: 'Example',
@@ -52,13 +52,13 @@ export const createExampleProvider = (options: ProviderOptions = {}) => {
 		fetchTrack: async (url) => /* our link -> TrackInfo */,
 		findByIsrc: async (isrc) => /* our link for this ISRC, if we can search by ISRC */,
 		findByTrack: async (track) => /* our link by text match, if we cannot */,
-	};
-};
+	}
+}
 ```
 
 Implement `findByIsrc` when the platform can search by ISRC, `findByTrack` when it can only match on
-text, and both when either is possible — the resolver prefers ISRC. Always accept an injectable
-`fetch`; the tests depend on it.
+text, and both when either is possible, the resolver prefers ISRC. Always accept an injectable
+`fetch`, the tests depend on it.
 
 To be a fully supported built-in it also needs a URL pattern in `src/platform.ts`, an export from
 `src/index.ts`, and tests. A provider that only ships in a consumer's own code needs none of that.
@@ -72,14 +72,14 @@ To be a fully supported built-in it also needs a URL pattern in `src/platform.ts
   and answers from a routing table.
 - The pipeline is tested with stub providers and `enabled: []`, which drops every built-in so
   nothing can reach out by accident.
-- Cache backends are tested by the shared conformance suite in `test/cache.test.ts` — a new adapter
+- Cache backends are tested by the shared conformance suite in `test/cache.test.ts`, a new adapter
   should be added to the `adapters` array there rather than tested separately.
 
 ## Releasing
 
 Maintainers only. Versions are CalVer, `YEAR.MONTH.DAY`, with an optional `-rc1` style prerelease.
 
-Tags are zero-padded; the npm version is not. That is not a style choice — SemVer forbids leading
+Tags are zero-padded, the npm version is not. That is not a style choice, SemVer forbids leading
 zeroes in numeric identifiers, so npm rejects `2026.08.19` and accepts `2026.8.19`. The release
 workflow normalizes the tag and fails if the two disagree.
 

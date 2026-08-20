@@ -1,17 +1,17 @@
-import { pickBestMatch } from './match.js';
-import { normalizeText } from './text.js';
-import type { FetchLike, TrackInfo } from './types.js';
+import { pickBestMatch } from './match.js'
+import { normalizeText } from './text.js'
+import type { FetchLike, TrackInfo } from './types.js'
 
 type DeezerSearchTrack = {
-	title: string;
-	artist: { name: string };
-	isrc?: string;
-	link?: string;
-};
+	title: string
+	artist: { name: string }
+	isrc?: string
+	link?: string
+}
 
 type DeezerSearchResponse = {
-	data?: DeezerSearchTrack[];
-};
+	data?: DeezerSearchTrack[]
+}
 
 /**
  * Searches Deezer by artist and title and picks the closest match.
@@ -27,14 +27,14 @@ export const pickBestDeezerTrack = async (
 	try {
 		// Stylized artist names (e.g. "Nightvi$ion") return zero results from Deezer's search
 		// verbatim, so the query itself is normalized, not just the candidates it's scored against.
-		const query = normalizeText(`${target.artist} ${target.title}`);
-		const deezerUrl = `https://api.deezer.com/search?q=${encodeURIComponent(query)}`;
-		const response = await fetchImpl(deezerUrl);
-		if (!response.ok) return null;
-		const json = (await response.json()) as DeezerSearchResponse;
+		const query = normalizeText(`${target.artist} ${target.title}`)
+		const deezerUrl = `https://api.deezer.com/search?q=${encodeURIComponent(query)}`
+		const response = await fetchImpl(deezerUrl)
+		if (!response.ok) return null
+		const json = (await response.json()) as DeezerSearchResponse
 
 		if (!Array.isArray(json.data) || json.data.length === 0) {
-			return null;
+			return null
 		}
 
 		const bestTrack = pickBestMatch(
@@ -42,16 +42,16 @@ export const pickBestDeezerTrack = async (
 			json.data,
 			(track) => track.artist.name,
 			(track) => track.title,
-		);
-		if (!bestTrack) return null;
+		)
+		if (!bestTrack) return null
 
 		return {
 			name: bestTrack.title,
 			artists: [bestTrack.artist.name],
 			isrc: bestTrack.isrc ?? null,
 			link: bestTrack.link ?? null,
-		};
+		}
 	} catch {
-		return null;
+		return null
 	}
-};
+}

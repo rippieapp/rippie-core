@@ -28,4 +28,4 @@ export const CACHE_TABLES_SQL: readonly string[] = [
 	\`link\` text,
 	\`expires_at\` integer NOT NULL
 )`,
-];
+]
