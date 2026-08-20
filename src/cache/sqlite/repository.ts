@@ -115,18 +115,30 @@ export const createSqliteTrackCache = (options: SqliteTrackCacheOptions): TrackC
 						.run();
 				}
 
-				const merged: CachedPlatformLinks = isExpired
+				const existingLinks: CachedPlatformLinks = isExpired
 					? new Map()
 					: (getLinks(isrc) ?? new Map());
+				// Whether the entry was ALREADY partial before this merge, as opposed to merely
+				// having a null in the merge result. A complete entry widened with one new miss
+				// (e.g. a newly-enabled provider) must get a fresh negative TTL, not inherit the
+				// long expiry it earned while complete.
+				const wasAlreadyPartial =
+					!isExpired &&
+					existing &&
+					[...existingLinks.values()].some((link) => link == null);
+
+				const merged: CachedPlatformLinks = new Map(existingLinks);
 				for (const [platform, link] of incoming) merged.set(platform, link);
 
 				const hasNull = [...merged.values()].some((link) => link == null);
-				// Do not extend a temporary negative-result window during partial retries. Once
-				// every platform resolves, replace that short window with the normal cache TTL.
+				// Preserve the existing expiry only when the retry is STILL partial — that is
+				// the "don't extend a negative window" case. A retry that completes a partial
+				// entry, or a complete entry gaining a fresh miss, both fall through to a
+				// freshly computed TTL.
 				const expiresAt =
 					ttlMs != null
 						? timestamp + ttlMs
-						: hasNull && existing && !isExpired
+						: wasAlreadyPartial && hasNull && existing
 							? existing.expiresAt
 							: timestamp + (hasNull ? negativeTtlMs : defaultTtlMs);
 

@@ -144,6 +144,28 @@ for (const adapter of adapters) {
 			expect(await cache.getLinks('ISRC4')).toBeNull();
 		});
 
+		test('gives a complete entry widened with a new miss a fresh negative TTL', async () => {
+			// Regression: a complete entry retried the DEFAULT_TTL clock it earned while
+			// complete, so a single transient miss on a newly-enabled platform pinned that
+			// platform's "no link" answer for up to 30 days instead of 5 minutes.
+			const { cache, setTime } = build();
+			await cache.setLinks(
+				'ISRC7',
+				new Map([
+					[Platform.Spotify, 'https://example.test/spotify'],
+					[Platform.Deezer, 'https://example.test/deezer'],
+				]),
+			);
+
+			setTime(10);
+			await cache.setLinks('ISRC7', new Map([[Platform.Tidal, null]]));
+
+			setTime(10 + NEGATIVE_TTL - 1);
+			expect(await cache.getLinks('ISRC7')).not.toBeNull();
+			setTime(10 + NEGATIVE_TTL);
+			expect(await cache.getLinks('ISRC7')).toBeNull();
+		});
+
 		test('starts a fresh negative window at the exact expiry instant', async () => {
 			const { cache, setTime } = build();
 			await cache.setLinks('ISRC5', new Map([[Platform.Spotify, null]]), 100);

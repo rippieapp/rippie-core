@@ -52,13 +52,20 @@ export const createMemoryTrackCache = (options: CacheTtlOptions = {}): TrackCach
 			const merged: CachedPlatformLinks = isExpired ? new Map() : new Map(existing.links);
 			for (const [platform, link] of incoming) merged.set(platform, link);
 
+			// Whether the entry was ALREADY partial before this merge, as opposed to merely
+			// having a null in the merge result. A complete entry widened with one new miss
+			// (e.g. a newly-enabled provider) must get a fresh negative TTL, not inherit the
+			// long expiry it earned while complete.
+			const wasAlreadyPartial =
+				existing && !isExpired && [...existing.links.values()].some((link) => link == null);
 			const hasNull = [...merged.values()].some((link) => link == null);
-			// Do not extend a temporary negative-result window during partial retries. Once every
-			// platform resolves, replace that short window with the normal long-lived cache TTL.
+			// Preserve the existing expiry only when the retry is STILL partial — that is the
+			// "don't extend a negative window" case. A retry that completes a partial entry, or
+			// a complete entry gaining a fresh miss, both fall through to a freshly computed TTL.
 			const expiresAt =
 				ttlMs != null
 					? timestamp + ttlMs
-					: hasNull && existing && !isExpired
+					: wasAlreadyPartial && hasNull && existing
 						? existing.expiresAt
 						: timestamp + (hasNull ? negativeTtlMs : defaultTtlMs);
 
