@@ -6,7 +6,15 @@ export const Platform = {
 	Tidal: 'Tidal',
 } as const;
 
-export type Platform = (typeof Platform)[keyof typeof Platform];
+/**
+ * One of the five built-in platform names, or any other string a custom `Provider` names itself.
+ *
+ * `string & {}` rather than plain `string` keeps the five built-in names showing up in editor
+ * autocomplete while still accepting anything else — the widening a third-party `Provider` needs
+ * to type-check at all. See docs/architecture.md and the "Teaching her a new platform" section of
+ * the README.
+ */
+export type Platform = (typeof Platform)[keyof typeof Platform] | (string & {});
 
 const platformPatterns: { platform: Platform; pattern: RegExp }[] = [
 	{

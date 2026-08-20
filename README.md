@@ -150,6 +150,13 @@ const rippie = createRippie({ providers: [bandcamp] });
 A supplied provider replaces the built-in for the same platform rather than duplicating it, so this
 is also how you override one. `enabled` restricts which built-ins are constructed at all.
 
+A custom provider is a full resolution **target** — `resolve()` will search it via `findByIsrc` or
+`findByTrack` exactly like a built-in. It is not yet a resolution **source**: `matches` is honored
+by `fetchTrack` when you call it directly, but `resolve()` currently detects the source platform of
+a posted link through the five built-in URL patterns only, so a Bandcamp link posted first would
+not resolve today. Bandcamp still shows up as a link for a track sourced from any built-in
+platform.
+
 Every provider factory is also exported directly, if you want one without the pipeline:
 
 ```ts

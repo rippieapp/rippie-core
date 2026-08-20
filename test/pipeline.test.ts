@@ -94,6 +94,32 @@ describe('createRippie configuration', () => {
 		const rippie = createRippie({ enabled: [], providers: [custom] });
 		expect(rippie.availablePlatforms).toEqual([Platform.Tidal]);
 	});
+
+	test('a platform name outside the five built-ins resolves as a target', async () => {
+		// Proves Platform's widening is more than a type-level fix: a provider naming itself
+		// something the package has never heard of is still a first-class resolution target,
+		// found via the same findByIsrc/findByTrack fan-out as any built-in.
+		//
+		// It is only a target here, not a source: resolve() detects the *source* platform via
+		// detectMusicPlatform's fixed regex table, which a custom provider's `matches` is never
+		// consulted for. Posting a Bandcamp link would not resolve at all today.
+		const spotify = stubProvider(Platform.Spotify, {
+			track: { name: 'Track', artists: ['Artist'], isrc: 'ISRC1', link: 'https://x/1' },
+		});
+		const bandcamp = stubProvider('Bandcamp', {
+			isrcLink: 'https://bandcamp.example/track/1',
+		});
+
+		const rippie = createRippie({
+			enabled: [],
+			providers: [spotify, bandcamp],
+		});
+		expect(rippie.availablePlatforms).toContain('Bandcamp');
+
+		const result = await rippie.resolve('https://open.spotify.com/track/abc123');
+		if (result.status !== 'ok') throw new Error('expected ok');
+		expect(result.links.get('Bandcamp')).toBe('https://bandcamp.example/track/1');
+	});
 });
 
 describe('resolve', () => {
