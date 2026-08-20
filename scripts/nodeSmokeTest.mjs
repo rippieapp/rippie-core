@@ -65,7 +65,7 @@ assert.equal(result.links.get(Platform.Deezer), 'https://www.deezer.com/en/track
 
 // The optional subpath resolves and exposes its DDL.
 const { CACHE_TABLES_SQL, createSqliteTrackCache } = await import('@rippieapp/core/cache-sqlite');
-assert.equal(CACHE_TABLES_SQL.length, 3);
+assert.equal(CACHE_TABLES_SQL.length, 4);
 assert.equal(typeof createSqliteTrackCache, 'function');
 
 console.log(`OK on Node ${process.version}`);
