@@ -46,8 +46,18 @@ neither is skipped rather than recorded as a miss, so an unsupported platform is
 
 ## Fuzzy matching
 
-Text matching compares normalized signatures of the form `artist - title` using Levenshtein
-distance, picking the lowest score.
+Text matching (`pickBestMatch` in `src/match.ts`) ranks candidates by **title closeness first**,
+then breaks ties among the closest-title group by **artist closeness** — two separate Levenshtein
+distances, not one combined score.
+
+Title-first exists because a single combined `artist - title` distance lets an unrelated candidate
+win purely on artist coincidence. A track credited on Apple as `"DILEX, Nightvi$ion & NVRVYN -
+UNICO"`, searched for as just `DILEX - UNICO`, scores worse on a combined signature than an
+entirely different song by an artist whose name happens to contain the word "Unico" — the extra
+collaborator names in the real match's credit outweigh the fact that its title is exactly right.
+Comparing title first closes that off: a wrong-song candidate can never win purely because its
+artist field happens to overlap, only candidates already tied for the closest title get to compete
+on artist.
 
 `normalizeText` exists because the same recording is titled differently on every platform. It
 lowercases, converts slug separators to spaces, strips punctuation, truncates everything from a
@@ -56,32 +66,39 @@ lowercases, converts slug separators to spaces, strips punctuation, truncates ev
 `Rick Astley - Never Gonna Give You Up (Official Video)` and
 `rick_astley - never gonna give you up [Remastered]` reduce to the same string.
 
-Apple Music scores twice: once against the iTunes record's `artist - collection`, and once against
-the album slug in the URL, summing both. The slug carries signal the API response sometimes lacks.
-
 This is heuristic. It can select the wrong master, a live cut, or a regional re-release. That is an
 accepted cost — the alternative is no link at all.
 
-## Why Apple Music is scraped
+## Why Apple Music search has a gap
 
-The official Apple Music API requires a paid developer membership and a signed token. The free
-iTunes Search API is open but unreliable for fuzzy queries — the exact case that matters here.
+The official Apple Music API requires a paid developer membership and a signed token. This package
+uses only the free, public iTunes Search and Lookup APIs instead — no page scraping, so nothing here
+depends on Apple's markup or is against Apple's terms.
 
-The compromise is a hybrid: scrape the public Apple Music search page for candidate track URLs,
-then validate each candidate against the free iTunes Lookup API for trustworthy metadata. The
-scrape supplies recall, the API supplies precision.
+The tradeoff: Apple's Search endpoint has had an open bug since September 2025 where it omits
+explicit-content tracks from results entirely, no matter what the `explicit` parameter is set to.
+Lookup is unaffected — a track already known by Apple ID (from a posted link, say) resolves
+correctly regardless of its content rating. Only text search (`findByTrack`, going from another
+platform's metadata to an Apple link with no ID yet) can return `null` for an explicit track that
+genuinely exists on Apple Music, because Search's own index doesn't have it right now. See
+[the open Apple Developer Forums thread](https://developer.apple.com/forums/thread/802700).
 
-This is the most fragile part of the package and the first thing to check when Apple links stop
-resolving. It is isolated in one provider so replacing it means rewriting one file.
+This is the first thing to check when an Apple Music text match unexpectedly comes back `null` —
+confirm the track isn't simply explicit and therefore invisible to Search today.
 
 ## Why YouTube Music takes two routes
 
-`ytmusic-api` is used for search: its `/search` endpoint is unauthenticated and works well.
+There is no official YouTube Music API — Google has never shipped one. `ytmusic-api` is used for
+search: it replays requests to InnerTube, the private JSON API the YouTube Music web client itself
+calls, the same approach every other YouTube Music tool takes (`ytmusicapi`, YouTube.js, and the
+rest). Its `/search` endpoint is unauthenticated and works well, but it is inherently unofficial and
+can break if YouTube changes that internal contract.
 
 Reading a specific link deliberately does *not* use `ytmusic.getSong()`. YouTube's internal
 `/player` endpoint requires bot verification and returns `LOGIN_REQUIRED`. The public oEmbed
 endpoint returns a title and channel name without any of that, which is enough to feed the Deezer
-bridge. Topic channels are named `Artist Name - Topic`, so that suffix is stripped.
+bridge, and is a genuinely official, documented, unauthenticated endpoint rather than another
+reverse-engineered one. Topic channels are named `Artist Name - Topic`, so that suffix is stripped.
 
 ## The two-layer cache
 

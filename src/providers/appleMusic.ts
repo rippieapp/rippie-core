@@ -1,19 +1,20 @@
 /**
  * Apple Music / iTunes provider.
  *
- * The official Apple Music API is behind a paid developer membership. The free iTunes Search API
- * is open but misses fuzzy queries and never exposes ISRCs. This provider therefore takes a hybrid
- * route: scrape the public Apple Music search page for candidate links, validate those candidates
- * against the iTunes Lookup API for accurate metadata, and bridge to Deezer for the ISRC.
+ * The official Apple Music API is behind a paid developer membership. This provider uses only
+ * the free, public iTunes Search and Lookup APIs: Search finds candidate links by artist/title
+ * text, Lookup resolves a known Apple ID to metadata, and Deezer is bridged in for the ISRC that
+ * Apple never exposes.
  *
- * Scraping is inherently best effort. Apple can change its markup at any time, in which case
- * lookups degrade to null rather than throwing.
+ * Apple's Search endpoint has a known bug (reported since September 2025, still open) where it
+ * omits explicit-content tracks from results regardless of the `explicit` parameter. Lookup is
+ * unaffected. Until Apple fixes this, `findByTrack` can return null for explicit tracks even
+ * when the track exists on Apple Music. See https://developer.apple.com/forums/thread/802700.
  */
 
-import { distance } from 'fastest-levenshtein';
 import { pickBestDeezerTrack } from '../deezerBridge.js';
+import { pickBestMatch } from '../match.js';
 import { Platform } from '../platform.js';
-import { normalizeText, trackSignature } from '../text.js';
 import type { FetchLike, Provider, ProviderOptions, TrackInfo } from '../types.js';
 
 type ITunesResult = {
@@ -21,17 +22,12 @@ type ITunesResult = {
 	artistName: string;
 	collectionName: string;
 	trackName?: string;
+	trackViewUrl?: string;
 };
 
 type ITunesLookupResponse = {
 	results: ITunesResult[];
 };
-
-const SEARCH_USER_AGENT =
-	'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36';
-
-const SONG_BLOCK_PATTERN =
-	/"contentDescriptor":\s*\{\s*"kind"\s*:\s*"song"[\s\S]*?"url"\s*:\s*"(https:\/\/music\.apple\.com\/us\/album\/[^"\\?]+[^"]+\?i=\d+)"/g;
 
 const APPLE_URL_PATTERN = /music\.apple\.com\/[a-z]{2}\/album\//;
 
@@ -60,58 +56,31 @@ export const createAppleMusicProvider = (options: ProviderOptions = {}) => {
 		}
 	};
 
-	/** Scrapes Apple Music search results and scores candidates using iTunes API data. */
+	/** Searches the iTunes Search API and picks the closest title match, then closest artist. */
 	const lookupAppleTrackByInfo = async (artist: string, song: string): Promise<string | null> => {
 		try {
 			const searchQuery = `${artist} ${song}`;
-			const searchUrl = `https://music.apple.com/us/search?term=${encodeURIComponent(searchQuery)}`;
-			const targetSignature = normalizeText(trackSignature(artist, song));
+			const searchUrl = `https://itunes.apple.com/search?term=${encodeURIComponent(searchQuery)}&media=music&entity=song&limit=25`;
 
-			const response = await fetchImpl(searchUrl, {
-				headers: { 'User-Agent': SEARCH_USER_AGENT },
-			});
+			const response = await fetchImpl(searchUrl);
 			if (!response.ok) return null;
 
-			const html = await response.text();
-			const songMatches = [...html.matchAll(SONG_BLOCK_PATTERN)];
-			if (songMatches.length === 0) return null;
+			const json = (await response.json()) as ITunesLookupResponse;
+			if (!json.results || json.results.length === 0) return null;
 
-			const cleanUrls = songMatches.map((match) => (match[1] ?? '').replace(/\\\//g, '/'));
-			const topTrackUrls = [...new Set(cleanUrls)].slice(0, 5);
+			const candidates = json.results.filter(
+				(result): result is ITunesResult & { trackViewUrl: string; trackName: string } =>
+					Boolean(result.trackViewUrl && result.trackName),
+			);
 
-			const trackItems = topTrackUrls
-				.map((link) => ({ link, trackId: extractAppleId(link) }))
-				.filter((item): item is { link: string; trackId: string } => item.trackId !== null);
+			const best = pickBestMatch(
+				{ artist, title: song },
+				candidates,
+				(c) => c.artistName,
+				(c) => c.trackName,
+			);
 
-			const trackIds = trackItems.map((item) => item.trackId).join(',');
-			const itunesResults = trackIds ? await fetchITunesRecords(trackIds) : [];
-
-			let bestLink: string | null = null;
-			let lowestMatchScore = Number.POSITIVE_INFINITY;
-
-			for (const { link, trackId } of trackItems) {
-				const data = itunesResults.find((result) => result.trackId.toString() === trackId);
-				if (!data) continue;
-
-				const itunesScore = distance(
-					targetSignature,
-					normalizeText(`${data.artistName} - ${data.collectionName}`),
-				);
-
-				let urlScore = 0;
-				const slugMatch = link.match(/\/album\/([^/]+)\/\d+/);
-				if (slugMatch) {
-					urlScore = distance(normalizeText(song), normalizeText(slugMatch[1] ?? ''));
-				}
-
-				const matchScore = itunesScore + urlScore;
-				if (matchScore < lowestMatchScore) {
-					lowestMatchScore = matchScore;
-					bestLink = link;
-				}
-			}
-
-			return bestLink;
+			return best?.trackViewUrl ?? null;
 		} catch {
 			return null;
 		}
@@ -131,11 +100,8 @@ export const createAppleMusicProvider = (options: ProviderOptions = {}) => {
 
 			const artistName = record.artistName;
 			const trackName = record.trackName ?? record.collectionName;
-			// iTunes artist credits can carry commas, ampersands, and stylized characters
-			// ("DILEX, Nightvi$ion & NVRVYN") that return zero results from Deezer's search
-			// verbatim. Normalizing first matches the signature the ytMusic bridge already sends.
 			const deezerMatch = await pickBestDeezerTrack(
-				normalizeText(trackSignature(artistName, trackName)),
+				{ artist: artistName, title: trackName },
 				fetchImpl,
 			);
 

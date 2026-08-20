@@ -11,11 +11,10 @@
  * Both routes are best effort and degrade to null rather than throwing.
  */
 
-import { distance } from 'fastest-levenshtein';
 import YTMusic from 'ytmusic-api';
 import { pickBestDeezerTrack } from '../deezerBridge.js';
+import { pickBestMatch } from '../match.js';
 import { Platform } from '../platform.js';
-import { normalizeText, trackSignature } from '../text.js';
 import type { FetchLike, Provider, ProviderOptions, TrackInfo } from '../types.js';
 
 type YtOEmbedResponse = {
@@ -72,25 +71,15 @@ export const createYtMusicProvider = (options: ProviderOptions = {}) => {
 			const results = await ytmusic.searchSongs(`${artist} ${song}`);
 			if (results.length === 0) return null;
 
-			const targetSignature = normalizeText(trackSignature(artist, song));
+			const best = pickBestMatch(
+				{ artist, title: song },
+				results,
+				(c) => c.artist.name,
+				(c) => c.name,
+			);
+			if (!best) return null;
 
-			let bestCandidate: (typeof results)[number] | null = null;
-			let lowestScore = Number.POSITIVE_INFINITY;
-
-			for (const candidate of results) {
-				const score = distance(
-					targetSignature,
-					normalizeText(`${candidate.artist.name} - ${candidate.name}`),
-				);
-				if (score < lowestScore) {
-					lowestScore = score;
-					bestCandidate = candidate;
-				}
-			}
-
-			if (!bestCandidate) return null;
-
-			return `https://music.youtube.com/watch?v=${bestCandidate.videoId}`;
+			return `https://music.youtube.com/watch?v=${best.videoId}`;
 		} catch {
 			return null;
 		}
@@ -114,7 +103,7 @@ export const createYtMusicProvider = (options: ProviderOptions = {}) => {
 			const songTitle = data.title.trim();
 
 			const deezerTrack = await pickBestDeezerTrack(
-				normalizeText(trackSignature(artistName, songTitle)),
+				{ artist: artistName, title: songTitle },
 				fetchImpl,
 			);
 			if (!deezerTrack) return null;

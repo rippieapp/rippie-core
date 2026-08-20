@@ -35,7 +35,7 @@ That works with no configuration at all. Three of the five platforms need no cre
 | Platform | Credentials | How a link is found |
 | --- | --- | --- |
 | Deezer | none | Official API, ISRC lookup |
-| Apple Music | none | Public search page + iTunes Lookup API, text matching |
+| Apple Music | none | iTunes Search API + Lookup API, text matching |
 | YouTube Music | none | `ytmusic-api` search + oEmbed, text matching |
 | Spotify | client ID + secret | Web API, ISRC search |
 | Tidal | client ID + secret | Open API v2, ISRC filter |
@@ -184,14 +184,23 @@ implementation, or for tests.
 Honesty before you depend on this:
 
 - **Apple Music and YouTube Music are best effort.** Apple's official API requires a paid developer
-  membership, so link discovery scrapes the public search page and validates candidates against the
-  free iTunes Lookup API. YouTube's `/player` endpoint requires bot verification, so link reading
-  goes through the public oEmbed endpoint. Both can break when those pages change. They degrade to
+  membership, so link discovery uses only the free, public iTunes Search and Lookup APIs — no page
+  scraping. Apple's Search endpoint has had a bug since September 2025 where it omits
+  explicit-content tracks from results entirely, regardless of the `explicit` parameter; Lookup is
+  unaffected, so a track already known by Apple ID still resolves fine, but text search for an
+  explicit track can return `null` even though the track exists on Apple Music. This is an upstream
+  Apple bug, not a limitation of this package — see
+  [the open Apple Developer Forums thread](https://developer.apple.com/forums/thread/802700).
+  YouTube has no official Music API at all; `ytmusic-api` replays requests to YouTube's internal
+  InnerTube API the same way every other YouTube Music tool does, and the `/player` endpoint used
+  for reading a specific link requires bot verification, so link reading goes through the public
+  oEmbed endpoint instead. Both routes can break when those internals change. They degrade to
   `null`, never an exception — but they are not contractual.
 - **Neither exposes an ISRC**, so both are bridged through a Deezer search to obtain one. That makes
   Deezer the load-bearing fallback of the whole system.
-- **Text matching is fuzzy.** Levenshtein distance over normalized artist/title signatures picks a
-  best candidate; it can pick the wrong one, a live version, or a re-release.
+- **Text matching is fuzzy.** Candidates are ranked by title closeness first, then artist closeness
+  breaks ties among the closest titles — it can still pick the wrong one, a live version, or a
+  re-release.
 - **Every lookup swallows its errors** and returns `null`. Rippie would rather say nothing than
   crash. If you need to distinguish "no match" from "the API is down", wrap the providers.
 
@@ -208,7 +217,9 @@ bun run examples/sqliteCache.ts https://www.deezer.com/track/3135556
 
 ## Rippie herself
 
-<!-- TODO: add the Rippie demo gif here. -->
+<img alt="showcase" src="https://i.imgur.com/2FI9wNP.gif" />
+
+<br>
 
 This package is the current that powers **Rippie**, a private Discord bot who watches a music
 channel and answers every song with buttons for the platforms that server cares about. Her Discord
