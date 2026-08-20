@@ -228,3 +228,61 @@ describe('memory cache isolation', () => {
 		);
 	});
 });
+
+describe('sqlite cache without foreign key enforcement', () => {
+	// SQLite disables FK enforcement per connection by default, and neither this adapter nor
+	// the README's own connection example turns it on. The rest of the conformance suite runs
+	// with the pragma set, which would mask this exact bug — these two tests deliberately don't.
+	const openDatabaseWithoutForeignKeys = () => {
+		const database = new Database(':memory:', { create: true, strict: true });
+		for (const statement of CACHE_TABLES_SQL) database.run(statement);
+		return database;
+	};
+
+	const countLinkRows = (database: Database, isrc: string): number =>
+		(
+			database
+				.query<{ n: number }, [string]>(
+					'SELECT COUNT(*) AS n FROM resolved_link_cache_links WHERE isrc = ?',
+				)
+				.get(isrc) ?? { n: 0 }
+		).n;
+
+	test('does not orphan child rows when an expired entry is overwritten', () => {
+		const database = openDatabaseWithoutForeignKeys();
+		const cache = createSqliteTrackCache({ db: drizzle({ client: database }) });
+
+		cache.setLinks(
+			'ISRC-ORPHAN',
+			new Map([
+				[Platform.Spotify, 'https://example.test/spotify'],
+				[Platform.Deezer, 'https://example.test/deezer'],
+			]),
+			-1, // already expired
+		);
+		cache.setLinks('ISRC-ORPHAN', new Map([[Platform.Spotify, 'https://example.test/new']]));
+
+		// Without an explicit child delete, the two rows from the expired entry survive
+		// alongside the new one, so a later getLinks would return three entries for one ISRC.
+		expect(countLinkRows(database, 'ISRC-ORPHAN')).toBe(1);
+		database.close();
+	});
+
+	test('does not orphan child rows during prune', () => {
+		const database = openDatabaseWithoutForeignKeys();
+		const cache = createSqliteTrackCache({ db: drizzle({ client: database }) });
+
+		cache.setLinks(
+			'ISRC-PRUNE',
+			new Map([
+				[Platform.Spotify, 'https://example.test/spotify'],
+				[Platform.Deezer, 'https://example.test/deezer'],
+			]),
+			-1,
+		);
+		cache.prune();
+
+		expect(countLinkRows(database, 'ISRC-PRUNE')).toBe(0);
+		database.close();
+	});
+});

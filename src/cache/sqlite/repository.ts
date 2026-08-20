@@ -1,4 +1,4 @@
-import { and, eq, gt, lte } from 'drizzle-orm';
+import { and, eq, gt, inArray, lte } from 'drizzle-orm';
 import type { BaseSQLiteDatabase } from 'drizzle-orm/sqlite-core';
 import type { Platform } from '../../platform.js';
 import type { TrackInfo } from '../../types.js';
@@ -109,6 +109,15 @@ export const createSqliteTrackCache = (options: SqliteTrackCacheOptions): TrackC
 					.get();
 				const isExpired = !existing || timestamp >= existing.expiresAt;
 				if (isExpired && existing) {
+					// Deleted explicitly rather than left to ON DELETE CASCADE: SQLite disables
+					// foreign key enforcement per connection by default, so a caller that never
+					// runs `PRAGMA foreign_keys = ON` would otherwise orphan these rows, and a
+					// later write reusing this isrc would read stale links back out alongside
+					// the new ones.
+					transaction
+						.delete(resolvedLinkCacheLinks)
+						.where(eq(resolvedLinkCacheLinks.isrc, isrc))
+						.run();
 					transaction
 						.delete(resolvedLinkCache)
 						.where(eq(resolvedLinkCache.isrc, isrc))
@@ -162,8 +171,25 @@ export const createSqliteTrackCache = (options: SqliteTrackCacheOptions): TrackC
 
 		prune: () => {
 			const timestamp = now();
-			db.delete(trackCache).where(lte(trackCache.expiresAt, timestamp)).run();
-			db.delete(resolvedLinkCache).where(lte(resolvedLinkCache.expiresAt, timestamp)).run();
+			db.transaction((transaction) => {
+				transaction.delete(trackCache).where(lte(trackCache.expiresAt, timestamp)).run();
+
+				// Children are deleted via a subquery on the about-to-expire parents, then the
+				// parents themselves — see the comment in setLinks on why this isn't left to
+				// ON DELETE CASCADE.
+				const expiringIsrcs = transaction
+					.select({ isrc: resolvedLinkCache.isrc })
+					.from(resolvedLinkCache)
+					.where(lte(resolvedLinkCache.expiresAt, timestamp));
+				transaction
+					.delete(resolvedLinkCacheLinks)
+					.where(inArray(resolvedLinkCacheLinks.isrc, expiringIsrcs))
+					.run();
+				transaction
+					.delete(resolvedLinkCache)
+					.where(lte(resolvedLinkCache.expiresAt, timestamp))
+					.run();
+			});
 		},
 	};
 };
