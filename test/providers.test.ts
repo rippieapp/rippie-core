@@ -1,4 +1,5 @@
 import { describe, expect, test } from 'bun:test';
+import { createAppleMusicProvider } from '../src/providers/appleMusic.js';
 import { createDeezerProvider } from '../src/providers/deezer.js';
 import { createSpotifyProvider } from '../src/providers/spotify.js';
 import { createTidalProvider } from '../src/providers/tidal.js';
@@ -302,5 +303,66 @@ describe('tidal provider', () => {
 	test('returns null when the network throws', async () => {
 		const tidal = createTidalProvider({ ...CREDENTIALS, fetch: failingFetch });
 		expect(await tidal.fetchTrack('https://tidal.com/browse/track/1')).toBeNull();
+	});
+});
+
+describe('apple music provider', () => {
+	test('normalizes the artist credit before bridging to Deezer', async () => {
+		// Regression: an iTunes artist credit with commas, an ampersand, and a stylized
+		// character returned zero Deezer results when sent verbatim, so the track never got
+		// an ISRC even though Deezer has the recording under a plainer signature.
+		const http = mockFetch({
+			'itunes.apple.com/lookup': {
+				results: [
+					{
+						trackId: 1864036284,
+						artistName: 'DILEX, Nightvi$ion & NVRVYN',
+						collectionName: 'UNICO - EP',
+						trackName: 'UNICO',
+					},
+				],
+			},
+			'api.deezer.com/search': {
+				data: [
+					{
+						title: 'UNICO',
+						artist: { name: 'DILEX' },
+						isrc: 'US6R22582396',
+						link: 'https://www.deezer.com/track/3738653962',
+					},
+				],
+			},
+		});
+		const apple = createAppleMusicProvider({ fetch: http.fetch });
+
+		const track = await apple.fetchTrack(
+			'https://music.apple.com/us/album/unico/1864036276?i=1864036284',
+		);
+
+		expect(track?.isrc).toBe('US6R22582396');
+
+		const [search] = http.matching('api.deezer.com/search');
+		expect(search?.url).not.toContain(encodeURIComponent('$'));
+		expect(search?.url).not.toContain(encodeURIComponent(','));
+	});
+
+	test('returns a null isrc when even the normalized signature has no Deezer match', async () => {
+		const http = mockFetch({
+			'itunes.apple.com/lookup': {
+				results: [
+					{
+						trackId: 1,
+						artistName: 'Nobody Real',
+						collectionName: 'Nothing',
+						trackName: 'Gone',
+					},
+				],
+			},
+			'api.deezer.com/search': { data: [] },
+		});
+		const apple = createAppleMusicProvider({ fetch: http.fetch });
+
+		const track = await apple.fetchTrack('https://music.apple.com/us/album/x/1?i=1');
+		expect(track?.isrc).toBeNull();
 	});
 });

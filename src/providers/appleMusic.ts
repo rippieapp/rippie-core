@@ -131,8 +131,11 @@ export const createAppleMusicProvider = (options: ProviderOptions = {}) => {
 
 			const artistName = record.artistName;
 			const trackName = record.trackName ?? record.collectionName;
+			// iTunes artist credits can carry commas, ampersands, and stylized characters
+			// ("DILEX, Nightvi$ion & NVRVYN") that return zero results from Deezer's search
+			// verbatim. Normalizing first matches the signature the ytMusic bridge already sends.
 			const deezerMatch = await pickBestDeezerTrack(
-				trackSignature(artistName, trackName),
+				normalizeText(trackSignature(artistName, trackName)),
 				fetchImpl,
 			);
 
